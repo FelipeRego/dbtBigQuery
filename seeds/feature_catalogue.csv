@@ -1,0 +1,7 @@
+event_name,feature_name,feature_description,is_user_initiated
+view_search_results,site_search,Saw a result set from on-site search,true
+select_promotion,promotions,Clicked a merchandising promotion,true
+view_promotion,promotions,Was shown a merchandising promotion,false
+select_item,product_list,Clicked through to an item from a list or category page,true
+view_item_list,product_list,Was shown a list or category page,false
+click,outbound_click,Clicked a link leading off the property,true

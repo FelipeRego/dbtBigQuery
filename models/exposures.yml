@@ -1,0 +1,71 @@
+version: 2
+
+# ---------------------------------------------------------------------------
+# Exposures: everything downstream of this project that would break if a model
+# changed shape. `dbt ls --select +exposure:*` answers "what do I break if I
+# touch this?" before the change ships rather than after someone's dashboard
+# goes blank.
+#
+# The MCP server is listed alongside the BI dashboard deliberately. An agent
+# consuming the semantic layer is a consumer like any other, and it is the one
+# most likely to be forgotten in an impact analysis precisely because nobody
+# has to log into it to notice it is broken.
+# ---------------------------------------------------------------------------
+
+exposures:
+
+  - name: ga4_product_analytics_dashboard
+    label: GA4 product analytics dashboard (Power BI)
+    type: dashboard
+    maturity: medium
+    url: https://app.powerbi.com/
+    description: >
+      Power BI report over the marts, covering the activation and D7 retention
+      cohort curves, the five-step purchase funnel, feature adoption by feature,
+      and session depth by device and channel.
+
+      The report reads the mart tables directly via the BigQuery connector
+      rather than through MetricFlow, which means it is the one consumer in this
+      project capable of computing a metric differently from the semantic layer.
+      Two guards against that: every visual is built on the pre-computed
+      eligibility flags (`is_cohort_eligible`, `has_full_d7_window`,
+      `has_full_activation_window`) rather than on raw date arithmetic, and the
+      funnel uses `is_reached_in_sequence` rather than `is_reached`. Both rules
+      are stated in docs/powerbi/README.md next to the connection file.
+
+      Replace the url above with your own workspace link once published.
+
+    depends_on:
+      - ref('dim_users')
+      - ref('fct_sessions')
+      - ref('fct_funnel')
+      - ref('fct_events')
+
+    owner:
+      name: Felipe Rego
+
+  - name: semantic_layer_mcp_server
+    label: Semantic layer MCP server
+    type: application
+    maturity: high
+    url: https://github.com/FelipeRego/dbtBigQuery/tree/main/mcp_server
+    description: >
+      The agent-facing surface of the semantic layer. Exposes the 42 MetricFlow
+      metrics over MCP and refuses anything not defined in
+      models/semantic/metrics.yml — there is no raw-SQL tool.
+
+      It depends on the semantic models rather than on the marts directly:
+      renaming a column that no metric references will not break it, but
+      renaming one that a measure expression uses will. `dbt parse` catches that
+      before the server ever runs, which is why scripts/render_metric_docs.py
+      --check runs in CI.
+
+    depends_on:
+      - ref('dim_users')
+      - ref('fct_sessions')
+      - ref('fct_events')
+      - ref('fct_funnel')
+      - ref('metricflow_time_spine')
+
+    owner:
+      name: Felipe Rego

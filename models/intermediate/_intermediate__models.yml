@@ -1,0 +1,175 @@
+version: 2
+
+models:
+  - name: int_sessions
+    description: >
+      One row per session, aggregated from stg_events on GA4's own
+      `ga_session_id`, plus the per-user first-seen anchor that every cohort
+      metric downstream depends on. Also quantifies the two places where GA4's
+      definitions and the textbook definitions disagree: session boundaries
+      (`inactivity_gaps`) and engagement (`is_engaged_session_derived`).
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "session_ended_at >= session_started_at"
+          config:
+            severity: error
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "page_views <= events_in_session"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not (has_purchase and session_revenue_usd < 0)"
+    columns:
+      - name: session_key
+        description: user_pseudo_id concatenated with ga_session_id. The primary key of this model.
+        tests:
+          - unique
+          - not_null
+      - name: user_pseudo_id
+        description: The device-browser identity that owns this session.
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_events')
+                field: user_pseudo_id
+      - name: ga_session_id
+        description: GA4's client-side session identifier.
+        tests:
+          - not_null
+      - name: ga_session_number
+        description: GA4's ordinal for this session within the user's history.
+      - name: session_started_at
+        description: Timestamp of the first event in the session, UTC.
+        tests:
+          - not_null
+      - name: session_ended_at
+        description: Timestamp of the last event in the session, UTC.
+        tests:
+          - not_null
+      - name: session_date
+        description: Calendar date of the session's first event. The partition key.
+        tests:
+          - not_null
+      - name: session_duration_seconds
+        description: >
+          Seconds between first and last event. Zero for single-event sessions,
+          which is a real and common outcome, not a data error.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: events_in_session
+        description: Count of events in the session. The numerator of session depth.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                inclusive: true
+      - name: page_views
+        description: Count of page_view events in the session.
+      - name: distinct_pages_viewed
+        description: Distinct page_location values in the session.
+      - name: engagement_time_seconds
+        description: Sum of GA4's per-event engagement time, converted to seconds.
+      - name: landing_page
+        description: page_location of the first event in the session that carried one.
+      - name: is_engaged_session
+        description: >
+          GA4's client-side engaged-session flag, true when any event in the
+          session carried session_engaged = '1'. This is the governed
+          definition, chosen because it is what the GA4 UI reports.
+        tests:
+          - not_null
+      - name: is_engaged_session_derived
+        description: >
+          The textbook definition — lasted 10s or more, OR had two or more page
+          views, OR converted — computed independently. Published so the gap
+          between the two can be measured rather than assumed.
+        tests:
+          - not_null
+      - name: inactivity_gaps
+        description: >
+          Number of times two consecutive events in this GA4 session were more
+          than `session_gap_minutes` apart. Greater than zero means a
+          server-side sessionisation rule would have split this into two or more
+          sessions.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: is_split_by_inactivity_rule
+        description: Convenience boolean for inactivity_gaps > 0.
+      - name: has_view_item
+        description: The session contained at least one view_item event.
+      - name: has_add_to_cart
+        description: The session contained at least one add_to_cart event.
+      - name: has_begin_checkout
+        description: The session contained at least one begin_checkout event.
+      - name: has_purchase
+        description: The session contained at least one purchase event.
+      - name: purchase_events
+        description: Count of purchase events. Can exceed `transactions` when GA4 duplicates an event.
+      - name: transactions
+        description: Distinct transaction_id values on purchase events in this session.
+      - name: session_revenue_usd
+        description: Sum of purchase revenue in USD for this session.
+      - name: device_category
+        description: Device category taken from the session's first event.
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['desktop', 'mobile', 'tablet']
+              config:
+                severity: warn
+      - name: operating_system
+        description: Operating system taken from the session's first event.
+      - name: browser
+        description: Browser taken from the session's first event.
+      - name: platform
+        description: GA4 platform taken from the session's first event.
+      - name: country
+        description: Country taken from the session's first event.
+      - name: region
+        description: Region taken from the session's first event.
+      - name: city
+        description: City taken from the session's first event.
+      - name: first_touch_source
+        description: User-scoped acquisition source, repeated onto the session.
+      - name: first_touch_medium
+        description: User-scoped acquisition medium, repeated onto the session.
+      - name: first_touch_campaign
+        description: User-scoped acquisition campaign, repeated onto the session.
+      - name: user_first_seen_at
+        description: >
+          The user's earliest session start *within the loaded window*. This is
+          day zero for every cohort metric in the project.
+        tests:
+          - not_null
+      - name: user_first_seen_date
+        description: Calendar date of user_first_seen_at. The cohort key.
+        tests:
+          - not_null
+      - name: user_first_touch_at
+        description: GA4's own record of when the property first saw this user, which may predate the window.
+      - name: days_since_first_session
+        description: >
+          Whole days between this session's date and the user's first-seen date.
+          Zero on the acquisition day. The axis for retention and adoption.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: is_first_session
+        description: True when this session is the user's first observed session.
+      - name: is_left_censored
+        description: >
+          True when GA4 says the user's first touch predates the loaded window,
+          so their "first session" here is an artefact of the cut. Cohort
+          metrics exclude these users.
+        tests:
+          - not_null

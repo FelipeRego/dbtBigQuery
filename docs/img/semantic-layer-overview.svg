@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="844" viewBox="0 0 1180 844" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+<rect x="0.0" y="0.0" width="1180.0" height="844.0" rx="0" fill="#fcfcfb" opacity="1.0" stroke="none"/>
+<text x="40.0" y="48.0" font-size="25" fill="#0b0b0b" font-weight="700" text-anchor="start" opacity="1.0">GA4 governed semantic layer</text>
+<text x="40.0" y="72.0" font-size="13.5" fill="#52514e" font-weight="400" text-anchor="start" opacity="1.0">Every figure below is read from MetricFlow at render time — no number here was typed by hand.</text>
+<text x="1140.0" y="48.0" font-size="13" fill="#52514e" font-weight="400" text-anchor="end" opacity="1.0">4,295,584 events · 360,129 sessions · 270,154 users</text>
+<text x="1140.0" y="70.0" font-size="13" fill="#87867f" font-weight="400" text-anchor="end" opacity="1.0">2020-11-01 → 2021-01-31</text>
+<rect x="40.0" y="100.0" width="262.0" height="96.0" rx="10" fill="#ffffff" opacity="1.0" stroke="#e6e5e1"/>
+<rect x="40.0" y="100.0" width="4.0" height="96.0" rx="2" fill="#2a78d6" opacity="1.0" stroke="none"/>
+<text x="60.0" y="127.0" font-size="10.5" fill="#87867f" font-weight="600" text-anchor="start" opacity="1.0">ACTIVATION RATE</text>
+<text x="60.0" y="163.0" font-size="30" fill="#0b0b0b" font-weight="700" text-anchor="start" opacity="1.0">1.18%</text>
+<text x="60.0" y="182.0" font-size="11.5" fill="#52514e" font-weight="400" text-anchor="start" opacity="1.0">first purchase ≤7d</text>
+<rect x="322.0" y="100.0" width="262.0" height="96.0" rx="10" fill="#ffffff" opacity="1.0" stroke="#e6e5e1"/>
+<rect x="322.0" y="100.0" width="4.0" height="96.0" rx="2" fill="#eb6834" opacity="1.0" stroke="none"/>
+<text x="342.0" y="127.0" font-size="10.5" fill="#87867f" font-weight="600" text-anchor="start" opacity="1.0">D7 RETENTION</text>
+<text x="342.0" y="163.0" font-size="30" fill="#0b0b0b" font-weight="700" text-anchor="start" opacity="1.0">7.83%</text>
+<text x="342.0" y="182.0" font-size="11.5" fill="#52514e" font-weight="400" text-anchor="start" opacity="1.0">returned on days 1–7</text>
+<rect x="604.0" y="100.0" width="262.0" height="96.0" rx="10" fill="#ffffff" opacity="1.0" stroke="#e6e5e1"/>
+<rect x="604.0" y="100.0" width="4.0" height="96.0" rx="2" fill="#1baf7a" opacity="1.0" stroke="none"/>
+<text x="624.0" y="127.0" font-size="10.5" fill="#87867f" font-weight="600" text-anchor="start" opacity="1.0">SESSION DEPTH</text>
+<text x="624.0" y="163.0" font-size="30" fill="#0b0b0b" font-weight="700" text-anchor="start" opacity="1.0">11.9</text>
+<text x="624.0" y="182.0" font-size="11.5" fill="#52514e" font-weight="400" text-anchor="start" opacity="1.0">events per session</text>
+<rect x="886.0" y="100.0" width="262.0" height="96.0" rx="10" fill="#ffffff" opacity="1.0" stroke="#e6e5e1"/>
+<rect x="886.0" y="100.0" width="4.0" height="96.0" rx="2" fill="#52514e" opacity="1.0" stroke="none"/>
+<text x="906.0" y="127.0" font-size="10.5" fill="#87867f" font-weight="600" text-anchor="start" opacity="1.0">FEATURE ADOPTION</text>
+<text x="906.0" y="163.0" font-size="30" fill="#0b0b0b" font-weight="700" text-anchor="start" opacity="1.0">10.5%</text>
+<text x="906.0" y="182.0" font-size="11.5" fill="#52514e" font-weight="400" text-anchor="start" opacity="1.0">any feature ≤7d</text>
+<rect x="40.0" y="226.0" width="700.0" height="290.0" rx="10" fill="#ffffff" opacity="1.0" stroke="#e6e5e1"/>
+<text x="60.0" y="254.0" font-size="15" fill="#0b0b0b" font-weight="600" text-anchor="start" opacity="1.0">Cohort curves by acquisition week</text>
+<text x="720.0" y="254.0" font-size="11.5" fill="#87867f" font-weight="400" text-anchor="end" opacity="1.0">dated by cohort arrival, not by return</text>
+<line x1="88" y1="294.0" x2="636" y2="294.0" stroke="#e6e5e1"/>
+<text x="78.0" y="298.0" font-size="10.5" fill="#87867f" font-weight="400" text-anchor="end" opacity="1.0">12%</text>
+<line x1="88" y1="351.3" x2="636" y2="351.3" stroke="#e6e5e1"/>
+<text x="78.0" y="355.3" font-size="10.5" fill="#87867f" font-weight="400" text-anchor="end" opacity="1.0">8%</text>
+<line x1="88" y1="408.7" x2="636" y2="408.7" stroke="#e6e5e1"/>
+<text x="78.0" y="412.7" font-size="10.5" fill="#87867f" font-weight="400" text-anchor="end" opacity="1.0">4%</text>
+<line x1="88" y1="466.0" x2="636" y2="466.0" stroke="#e6e5e1"/>
+<text x="78.0" y="470.0" font-size="10.5" fill="#87867f" font-weight="400" text-anchor="end" opacity="1.0">0%</text>
+<rect x="60.0" y="264.0" width="9.0" height="9.0" rx="2" fill="#eb6834" opacity="1.0" stroke="none"/>
+<text x="75.0" y="273.0" font-size="11.5" fill="#52514e" font-weight="400" text-anchor="start" opacity="1.0">D7 retention</text>
+<rect x="160.4" y="264.0" width="9.0" height="9.0" rx="2" fill="#2a78d6" opacity="1.0" stroke="none"/>
+<text x="175.4" y="273.0" font-size="11.5" fill="#52514e" font-weight="400" text-anchor="start" opacity="1.0">D1 retention</text>
+<rect x="260.8" y="264.0" width="9.0" height="9.0" rx="2" fill="#1baf7a" opacity="1.0" stroke="none"/>
+<text x="275.8" y="273.0" font-size="11.5" fill="#52514e" font-weight="400" text-anchor="start" opacity="1.0">Activation</text>
+<path d="M88.0,374.2 L130.2,333.2 L172.3,315.1 L214.5,315.6 L256.6,332.1 L298.8,326.2 L340.9,359.0 L383.1,370.4 L425.2,389.2 L467.4,394.2 L509.5,370.8 L551.7,369.5 L593.8,354.1" fill="none" stroke="#eb6834" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="88.0" cy="374.2" r="3.2" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<circle cx="130.2" cy="333.2" r="3.2" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<circle cx="172.3" cy="315.1" r="3.2" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<circle cx="214.5" cy="315.6" r="3.2" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<circle cx="256.6" cy="332.1" r="3.2" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<circle cx="298.8" cy="326.2" r="3.2" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<circle cx="340.9" cy="359.0" r="3.2" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<circle cx="383.1" cy="370.4" r="3.2" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<circle cx="425.2" cy="389.2" r="3.2" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<circle cx="467.4" cy="394.2" r="3.2" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<circle cx="509.5" cy="370.8" r="3.2" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<circle cx="551.7" cy="369.5" r="3.2" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<circle cx="593.8" cy="354.1" r="3.2" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<text x="602.8" y="358.1" font-size="11.5" fill="#52514e" font-weight="600" text-anchor="start" opacity="1.0">D7 retention</text>
+<path d="M88.0,416.2 L130.2,393.5 L172.3,389.1 L214.5,382.3 L256.6,395.0 L298.8,390.2 L340.9,406.3 L383.1,409.0 L425.2,421.8 L467.4,425.7 L509.5,413.0 L551.7,413.6 L593.8,404.7 L636.0,408.0" fill="none" stroke="#2a78d6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="88.0" cy="416.2" r="3.2" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<circle cx="130.2" cy="393.5" r="3.2" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<circle cx="172.3" cy="389.1" r="3.2" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<circle cx="214.5" cy="382.3" r="3.2" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<circle cx="256.6" cy="395.0" r="3.2" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<circle cx="298.8" cy="390.2" r="3.2" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<circle cx="340.9" cy="406.3" r="3.2" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<circle cx="383.1" cy="409.0" r="3.2" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<circle cx="425.2" cy="421.8" r="3.2" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<circle cx="467.4" cy="425.7" r="3.2" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<circle cx="509.5" cy="413.0" r="3.2" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<circle cx="551.7" cy="413.6" r="3.2" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<circle cx="593.8" cy="404.7" r="3.2" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<circle cx="636.0" cy="408.0" r="3.2" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/>
+<text x="645.0" y="412.0" font-size="11.5" fill="#52514e" font-weight="600" text-anchor="start" opacity="1.0">D1 retention</text>
+<path d="M88.0,458.8 L130.2,454.2 L172.3,446.9 L214.5,447.9 L256.6,442.2 L298.8,438.3 L340.9,441.8 L383.1,445.8 L425.2,455.7 L467.4,460.1 L509.5,458.6 L551.7,456.3 L593.8,445.5" fill="none" stroke="#1baf7a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="88.0" cy="458.8" r="3.2" fill="#1baf7a" stroke="#ffffff" stroke-width="2"/>
+<circle cx="130.2" cy="454.2" r="3.2" fill="#1baf7a" stroke="#ffffff" stroke-width="2"/>
+<circle cx="172.3" cy="446.9" r="3.2" fill="#1baf7a" stroke="#ffffff" stroke-width="2"/>
+<circle cx="214.5" cy="447.9" r="3.2" fill="#1baf7a" stroke="#ffffff" stroke-width="2"/>
+<circle cx="256.6" cy="442.2" r="3.2" fill="#1baf7a" stroke="#ffffff" stroke-width="2"/>
+<circle cx="298.8" cy="438.3" r="3.2" fill="#1baf7a" stroke="#ffffff" stroke-width="2"/>
+<circle cx="340.9" cy="441.8" r="3.2" fill="#1baf7a" stroke="#ffffff" stroke-width="2"/>
+<circle cx="383.1" cy="445.8" r="3.2" fill="#1baf7a" stroke="#ffffff" stroke-width="2"/>
+<circle cx="425.2" cy="455.7" r="3.2" fill="#1baf7a" stroke="#ffffff" stroke-width="2"/>
+<circle cx="467.4" cy="460.1" r="3.2" fill="#1baf7a" stroke="#ffffff" stroke-width="2"/>
+<circle cx="509.5" cy="458.6" r="3.2" fill="#1baf7a" stroke="#ffffff" stroke-width="2"/>
+<circle cx="551.7" cy="456.3" r="3.2" fill="#1baf7a" stroke="#ffffff" stroke-width="2"/>
+<circle cx="593.8" cy="445.5" r="3.2" fill="#1baf7a" stroke="#ffffff" stroke-width="2"/>
+<text x="602.8" y="449.5" font-size="11.5" fill="#52514e" font-weight="600" text-anchor="start" opacity="1.0">Activation</text>
+<text x="88.0" y="484.0" font-size="10.5" fill="#87867f" font-weight="400" text-anchor="middle" opacity="1.0">2020-10-26</text>
+<text x="383.1" y="484.0" font-size="10.5" fill="#87867f" font-weight="400" text-anchor="middle" opacity="1.0">2020-12-14</text>
+<text x="636.0" y="484.0" font-size="10.5" fill="#87867f" font-weight="400" text-anchor="middle" opacity="1.0">2021-01-25</text>
+<line x1="636.0" y1="294" x2="636.0" y2="466" stroke="#87867f" stroke-width="1" stroke-dasharray="3 3"/>
+<text x="626.0" y="308.0" font-size="10.5" fill="#52514e" font-weight="600" text-anchor="end" opacity="1.0">window still open —</text>
+<text x="626.0" y="322.0" font-size="10.5" fill="#52514e" font-weight="400" text-anchor="end" opacity="1.0">the layer returns null</text>
+<text x="626.0" y="336.0" font-size="10.5" fill="#52514e" font-weight="400" text-anchor="end" opacity="1.0">rather than a low number</text>
+<rect x="760.0" y="226.0" width="380.0" height="290.0" rx="10" fill="#ffffff" opacity="1.0" stroke="#e6e5e1"/>
+<text x="780.0" y="254.0" font-size="15" fill="#0b0b0b" font-weight="600" text-anchor="start" opacity="1.0">Feature adoption, first 7 days</text>
+<text x="780.0" y="273.0" font-size="11.5" fill="#52514e" font-weight="400" text-anchor="start" opacity="1.0">User-initiated events only; impressions excluded.</text>
+<text x="878.0" y="319.0" font-size="12" fill="#52514e" font-weight="400" text-anchor="end" opacity="1.0">Site search</text>
+<rect x="892.0" y="304.0" width="170.0" height="20.0" rx="4" fill="#e6e5e1" opacity="0.5" stroke="none"/>
+<rect x="892.0" y="304.0" width="170.0" height="20.0" rx="4" fill="#2a78d6" opacity="1.0" stroke="none"/>
+<text x="1071.0" y="319.0" font-size="12" fill="#0b0b0b" font-weight="600" text-anchor="start" opacity="1.0">5.09%</text>
+<text x="878.0" y="367.0" font-size="12" fill="#52514e" font-weight="400" text-anchor="end" opacity="1.0">Product list</text>
+<rect x="892.0" y="352.0" width="170.0" height="20.0" rx="4" fill="#e6e5e1" opacity="0.5" stroke="none"/>
+<rect x="892.0" y="352.0" width="140.0" height="20.0" rx="4" fill="#2a78d6" opacity="1.0" stroke="none"/>
+<text x="1041.0" y="367.0" font-size="12" fill="#0b0b0b" font-weight="600" text-anchor="start" opacity="1.0">4.19%</text>
+<text x="878.0" y="415.0" font-size="12" fill="#52514e" font-weight="400" text-anchor="end" opacity="1.0">Promotions</text>
+<rect x="892.0" y="400.0" width="170.0" height="20.0" rx="4" fill="#e6e5e1" opacity="0.5" stroke="none"/>
+<rect x="892.0" y="400.0" width="95.2" height="20.0" rx="4" fill="#2a78d6" opacity="1.0" stroke="none"/>
+<text x="996.2" y="415.0" font-size="12" fill="#0b0b0b" font-weight="600" text-anchor="start" opacity="1.0">2.85%</text>
+<text x="878.0" y="463.0" font-size="12" fill="#52514e" font-weight="400" text-anchor="end" opacity="1.0">Outbound click</text>
+<rect x="892.0" y="448.0" width="170.0" height="20.0" rx="4" fill="#e6e5e1" opacity="0.5" stroke="none"/>
+<rect x="892.0" y="448.0" width="8.7" height="20.0" rx="4" fill="#2a78d6" opacity="1.0" stroke="none"/>
+<text x="909.7" y="463.0" font-size="12" fill="#0b0b0b" font-weight="600" text-anchor="start" opacity="1.0">0.26%</text>
+<rect x="40.0" y="536.0" width="1100.0" height="258.0" rx="10" fill="#ffffff" opacity="1.0" stroke="#e6e5e1"/>
+<text x="60.0" y="564.0" font-size="15" fill="#0b0b0b" font-weight="600" text-anchor="start" opacity="1.0">Purchase funnel — strict, in-sequence definition</text>
+<text x="60.0" y="583.0" font-size="11.5" fill="#52514e" font-weight="400" text-anchor="start" opacity="1.0">A step counts only when every prior step was reached in the same session.</text>
+<text x="176.0" y="623.0" font-size="12" fill="#52514e" font-weight="400" text-anchor="end" opacity="1.0">Session start</text>
+<rect x="190.0" y="608.0" width="770.0" height="21.0" rx="4" fill="#e6e5e1" opacity="0.45" stroke="none"/>
+<rect x="190.0" y="608.0" width="770.0" height="21.0" rx="4" fill="#2a78d6" opacity="1.0" stroke="none"/>
+<text x="970.0" y="623.0" font-size="12" fill="#0b0b0b" font-weight="600" text-anchor="start" opacity="1.0">354,857</text>
+<text x="176.0" y="655.0" font-size="12" fill="#52514e" font-weight="400" text-anchor="end" opacity="1.0">View item</text>
+<rect x="190.0" y="640.0" width="770.0" height="21.0" rx="4" fill="#e6e5e1" opacity="0.45" stroke="none"/>
+<rect x="190.0" y="640.0" width="163.3" height="21.0" rx="4" fill="#2a78d6" opacity="1.0" stroke="none"/>
+<text x="363.3" y="655.0" font-size="12" fill="#0b0b0b" font-weight="600" text-anchor="start" opacity="1.0">75,271</text>
+<text x="1116.0" y="655.0" font-size="11.5" fill="#87867f" font-weight="400" text-anchor="end" opacity="1.0"> 21.2% of previous</text>
+<text x="176.0" y="687.0" font-size="12" fill="#52514e" font-weight="400" text-anchor="end" opacity="1.0">Add to cart</text>
+<rect x="190.0" y="672.0" width="770.0" height="21.0" rx="4" fill="#e6e5e1" opacity="0.45" stroke="none"/>
+<rect x="190.0" y="672.0" width="32.3" height="21.0" rx="4" fill="#2a78d6" opacity="1.0" stroke="none"/>
+<text x="232.3" y="687.0" font-size="12" fill="#0b0b0b" font-weight="600" text-anchor="start" opacity="1.0">14,897</text>
+<text x="1116.0" y="687.0" font-size="11.5" fill="#87867f" font-weight="400" text-anchor="end" opacity="1.0"> 19.8% of previous</text>
+<text x="176.0" y="719.0" font-size="12" fill="#52514e" font-weight="400" text-anchor="end" opacity="1.0">Begin checkout</text>
+<rect x="190.0" y="704.0" width="770.0" height="21.0" rx="4" fill="#e6e5e1" opacity="0.45" stroke="none"/>
+<rect x="190.0" y="704.0" width="12.7" height="21.0" rx="4" fill="#2a78d6" opacity="1.0" stroke="none"/>
+<text x="212.7" y="719.0" font-size="12" fill="#0b0b0b" font-weight="600" text-anchor="start" opacity="1.0">5,868</text>
+<text x="1116.0" y="719.0" font-size="11.5" fill="#87867f" font-weight="400" text-anchor="end" opacity="1.0"> 39.4% of previous</text>
+<text x="176.0" y="751.0" font-size="12" fill="#52514e" font-weight="400" text-anchor="end" opacity="1.0">Purchase</text>
+<rect x="190.0" y="736.0" width="770.0" height="21.0" rx="4" fill="#e6e5e1" opacity="0.45" stroke="none"/>
+<rect x="190.0" y="736.0" width="6.1" height="21.0" rx="4" fill="#eb6834" opacity="1.0" stroke="none"/>
+<text x="206.1" y="751.0" font-size="12" fill="#0b0b0b" font-weight="600" text-anchor="start" opacity="1.0">2,816</text>
+<text x="1116.0" y="751.0" font-size="11.5" fill="#87867f" font-weight="400" text-anchor="end" opacity="1.0"> 48.0% of previous</text>
+<text x="60.0" y="780.0" font-size="11.5" fill="#87867f" font-weight="400" text-anchor="start" opacity="1.0">Permissive counting (step reached regardless of prior steps) returns 11,106 at begin checkout and 4,848 at purchase — carts survive across sessions, this funnel does not.</text>
+<text x="40.0" y="830.0" font-size="11" fill="#87867f" font-weight="400" text-anchor="start" opacity="1.0">Generated by scripts/render_overview_svg.py · definitions in models/semantic/metrics.yml</text>
+</svg>

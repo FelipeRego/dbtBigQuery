@@ -1,0 +1,19 @@
+# Checked in deliberately: it contains no secrets. Authentication comes from
+# Application Default Credentials (`gcloud auth application-default login`),
+# and the project id comes from the environment, so a fork of this repo points
+# at the forker's own BigQuery project without editing a file.
+ga4_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('DBT_BIGQUERY_PROJECT') }}"
+      dataset: "{{ env_var('DBT_BIGQUERY_DATASET', 'ga4_analytics') }}"
+      location: US
+      threads: 8
+      timeout_seconds: 600
+      priority: interactive
+      # Fail the run rather than quietly billing a large scan. The full build
+      # of this project scans roughly 5 GiB; 20 GiB means something is wrong.
+      maximum_bytes_billed: 21474836480

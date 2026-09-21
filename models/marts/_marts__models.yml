@@ -1,0 +1,528 @@
+version: 2
+
+models:
+
+  # ---------------------------------------------------------------------------
+  - name: fct_events
+    description: >
+      One row per GA4 event with session, cohort and feature context attached.
+      The atomic fact of the project: every other mart is an aggregation of
+      this, and the semantic layer uses it for anything that needs to count
+      distinct users doing a specific thing within a specific number of days.
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not (funnel_step_number is not null and funnel_step_name is null)"
+    columns:
+      - name: event_key
+        description: Surrogate event key inherited from stg_events.
+        tests:
+          - not_null
+      - name: session_key
+        description: The session this event belongs to.
+        tests:
+          - not_null:
+              config:
+                severity: warn
+          - relationships:
+              arguments:
+                to: ref('fct_sessions')
+                field: session_key
+              config:
+                severity: warn
+      - name: user_pseudo_id
+        description: The device-browser identity that fired the event.
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_users')
+                field: user_pseudo_id
+      - name: event_name
+        description: The GA4 event type.
+        tests:
+          - not_null
+      - name: event_date
+        description: Event date. The partition key.
+        tests:
+          - not_null
+      - name: event_at
+        description: Event timestamp, UTC.
+        tests:
+          - not_null
+      - name: user_first_seen_at
+        description: The user's first observed session start, repeated onto the event.
+      - name: user_first_seen_date
+        description: The user's cohort date.
+      - name: days_since_first_session
+        description: >
+          Days between this event's session and the user's first session. The
+          single elapsed-time axis shared by activation, retention and adoption.
+      - name: ga_session_number
+        description: GA4's session ordinal for the owning session.
+      - name: is_first_session
+        description: True when the event occurred during the user's first observed session.
+      - name: is_engaged_session
+        description: True when the owning session met GA4's engagement definition.
+      - name: is_left_censored
+        description: True when the user predates the loaded window.
+      - name: funnel_step_number
+        description: >
+          1-5 for the five ecommerce funnel steps, null for every other event.
+          Null is deliberate — coercing non-funnel events into a step would
+          inflate step counts.
+        tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5]
+                quote: false
+              config:
+                where: "funnel_step_number is not null"
+      - name: funnel_step_name
+        description: Name of the funnel step, null for non-funnel events.
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['session_start', 'view_item', 'add_to_cart', 'begin_checkout', 'purchase']
+              config:
+                where: "funnel_step_name is not null"
+      - name: feature_name
+        description: >
+          The feature this event maps to, from the feature_catalogue seed. Null
+          for events that are not feature signals.
+        tests:
+          - relationships:
+              arguments:
+                to: ref('feature_catalogue')
+                field: feature_name
+              config:
+                where: "feature_name is not null"
+                severity: warn
+      - name: is_user_initiated_feature
+        description: >
+          False for impression events such as view_promotion. Feature adoption
+          metrics filter on this being true.
+        tests:
+          - not_null
+      - name: device_category
+        description: Device category at event time.
+      - name: operating_system
+        description: Operating system at event time.
+      - name: browser
+        description: Browser at event time.
+      - name: platform
+        description: GA4 platform.
+      - name: country
+        description: Country at event time.
+      - name: region
+        description: Region at event time.
+      - name: city
+        description: City at event time.
+      - name: first_touch_source
+        description: User-scoped acquisition source.
+      - name: first_touch_medium
+        description: User-scoped acquisition medium.
+      - name: first_touch_campaign
+        description: User-scoped acquisition campaign.
+      - name: page_location
+        description: URL the event fired on.
+      - name: page_title
+        description: Document title the event fired on.
+      - name: engagement_time_msec
+        description: GA4 foreground engagement attributed to this event.
+      - name: transaction_id
+        description: Order identifier on purchase events.
+      - name: purchase_revenue_usd
+        description: Purchase revenue in USD, zero-filled for non-purchase events so it is safely summable.
+        tests:
+          - not_null
+      - name: total_item_quantity
+        description: Units in the event's ecommerce payload, zero-filled.
+      - name: item_count
+        description: Length of the event's items array, zero-filled.
+
+  # ---------------------------------------------------------------------------
+  - name: dim_users
+    description: >
+      One row per user_pseudo_id, carrying acquisition attributes, lifetime
+      rollups, the activation and retention flags, and the eligibility flags
+      that say whether the user's observation window has closed. This is the
+      model the activation and retention metrics aggregate.
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "last_seen_at >= first_seen_at"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "engaged_sessions <= sessions"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not (is_activated and first_purchase_at is null)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not (transactions > 0 and sessions_with_purchase = 0)"
+    columns:
+      - name: user_pseudo_id
+        description: The device-browser identity. Primary key.
+        tests:
+          - unique
+          - not_null
+      - name: first_seen_at
+        description: The user's first observed session start, UTC. Day zero for cohort metrics.
+        tests:
+          - not_null
+      - name: first_seen_date
+        description: Calendar date of first_seen_at. The cohort key and partition key.
+        tests:
+          - not_null
+      - name: first_touch_at
+        description: GA4's own first-touch timestamp, which may predate the loaded window.
+      - name: last_seen_at
+        description: The user's most recent observed session start.
+        tests:
+          - not_null
+      - name: last_seen_date
+        description: Calendar date of last_seen_at.
+      - name: lifespan_days
+        description: Days between first and last observed session. Zero for single-day users.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: acquisition_source
+        description: Source from the user's first observed session. Meaningless for left-censored users.
+      - name: acquisition_medium
+        description: Medium from the user's first observed session.
+      - name: acquisition_campaign
+        description: Campaign from the user's first observed session.
+      - name: first_device_category
+        description: Device category of the user's first observed session.
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['desktop', 'mobile', 'tablet']
+              config:
+                severity: warn
+      - name: first_operating_system
+        description: Operating system of the user's first observed session.
+      - name: first_country
+        description: Country of the user's first observed session.
+      - name: first_landing_page
+        description: Landing page of the user's first observed session.
+      - name: sessions
+        description: Count of observed sessions.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                inclusive: true
+      - name: engaged_sessions
+        description: Count of sessions meeting GA4's engagement definition.
+      - name: active_days
+        description: Distinct calendar dates on which the user had a session.
+      - name: events
+        description: Total events across all sessions.
+      - name: page_views
+        description: Total page_view events across all sessions.
+      - name: total_session_seconds
+        description: Sum of session durations in seconds.
+      - name: sessions_with_view_item
+        description: Sessions in which the user viewed an item.
+      - name: sessions_with_add_to_cart
+        description: Sessions in which the user added to cart.
+      - name: sessions_with_begin_checkout
+        description: Sessions in which the user began checkout.
+      - name: sessions_with_purchase
+        description: Sessions in which the user purchased.
+      - name: transactions
+        description: Distinct transactions across all sessions.
+      - name: lifetime_revenue_usd
+        description: Sum of purchase revenue in USD across all sessions.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                inclusive: true
+      - name: features_adopted
+        description: Count of distinct user-initiated features the user has ever used.
+      - name: first_purchase_at
+        description: Timestamp of the user's first purchase event, null if they never purchased.
+      - name: days_to_first_purchase
+        description: >
+          Days from first-seen to first purchase. Null for non-purchasers, which
+          is why activation is a boolean rather than a comparison on this field.
+      - name: is_activated
+        description: >
+          ACTIVATION. True when the user's first purchase happened within
+          `activation_window_days` (default 7) of their first observed session.
+          See the README for why this was chosen over an add-to-cart definition.
+        tests:
+          - not_null
+      - name: is_retained_d1
+        description: True when the user had a session on day 1 after their first session.
+        tests:
+          - not_null
+      - name: is_retained_d7
+        description: >
+          D7 RETENTION. True when the user had at least one session on days 1-7
+          after their first session. Day 0 is excluded: returning within the
+          acquisition day is not returning.
+        tests:
+          - not_null
+      - name: is_retained_d30
+        description: True when the user had at least one session on days 1-30 after their first session.
+        tests:
+          - not_null
+      - name: has_full_activation_window
+        description: >
+          True when the loaded window extends at least `activation_window_days`
+          past this user's first session, so a non-activation is a real
+          non-activation rather than an unfinished observation.
+        tests:
+          - not_null
+      - name: has_full_d1_window
+        description: True when the loaded window extends at least 1 day past the user's first session.
+      - name: has_full_d7_window
+        description: True when the loaded window extends at least 7 days past the user's first session.
+        tests:
+          - not_null
+      - name: has_full_d30_window
+        description: True when the loaded window extends at least 30 days past the user's first session.
+      - name: is_left_censored
+        description: True when GA4 says this user existed before the loaded window opened.
+        tests:
+          - not_null
+      - name: is_cohort_eligible
+        description: >
+          The population cohort metrics should measure: users whose arrival we
+          genuinely observed. Equal to NOT is_left_censored. Combine with the
+          has_full_*_window flags for the relevant metric.
+        tests:
+          - not_null
+
+  # ---------------------------------------------------------------------------
+  - name: fct_sessions
+    description: >
+      One row per session with user acquisition attributes attached, so that
+      session-grain and user-grain reporting slice on identical dimension
+      values. The grain for session depth and engagement metrics.
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "page_views <= events_in_session"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not (has_purchase = false and session_revenue_usd > 0)"
+    columns:
+      - name: session_key
+        description: Primary key. user_pseudo_id concatenated with ga_session_id.
+        tests:
+          - unique
+          - not_null
+      - name: user_pseudo_id
+        description: Owning user.
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_users')
+                field: user_pseudo_id
+      - name: ga_session_id
+        description: GA4's client-side session identifier.
+      - name: ga_session_number
+        description: GA4's ordinal for this session within the user's history.
+      - name: session_started_at
+        description: First event timestamp in the session, UTC.
+        tests:
+          - not_null
+      - name: session_ended_at
+        description: Last event timestamp in the session, UTC.
+      - name: session_date
+        description: Calendar date of the session. Partition key.
+        tests:
+          - not_null
+      - name: session_duration_seconds
+        description: Seconds between first and last event in the session.
+      - name: days_since_first_session
+        description: Days between this session and the user's first session.
+      - name: user_first_seen_date
+        description: The user's cohort date.
+      - name: is_first_session
+        description: True when this is the user's first observed session.
+      - name: device_category
+        description: Device category at session start.
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['desktop', 'mobile', 'tablet']
+              config:
+                severity: warn
+      - name: operating_system
+        description: Operating system at session start.
+      - name: browser
+        description: Browser at session start.
+      - name: platform
+        description: GA4 platform.
+      - name: country
+        description: Country at session start.
+      - name: region
+        description: Region at session start.
+      - name: city
+        description: City at session start.
+      - name: landing_page
+        description: First page_location in the session.
+      - name: acquisition_source
+        description: The user's acquisition source, from dim_users.
+      - name: acquisition_medium
+        description: The user's acquisition medium, from dim_users.
+      - name: acquisition_campaign
+        description: The user's acquisition campaign, from dim_users.
+      - name: first_device_category
+        description: Device category of the user's first session, which may differ from this session's.
+      - name: first_country
+        description: Country of the user's first session.
+      - name: is_cohort_eligible
+        description: True when the owning user's arrival was genuinely observed.
+      - name: user_is_left_censored
+        description: True when the owning user predates the loaded window.
+      - name: is_engaged_session
+        description: GA4's engaged-session flag. The governed definition.
+        tests:
+          - not_null
+      - name: is_engaged_session_derived
+        description: The independently computed textbook definition, published for comparison.
+      - name: engagement_time_seconds
+        description: Sum of GA4 engagement time in the session, in seconds.
+      - name: inactivity_gaps
+        description: Count of intra-session gaps longer than `session_gap_minutes`.
+      - name: is_split_by_inactivity_rule
+        description: True when a server-side sessionisation rule would have split this session.
+      - name: events_in_session
+        description: Count of events. The numerator of session depth.
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1
+                inclusive: true
+      - name: page_views
+        description: Count of page_view events in the session.
+      - name: distinct_pages_viewed
+        description: Distinct page URLs in the session.
+      - name: has_view_item
+        description: Session contained a view_item event.
+      - name: has_add_to_cart
+        description: Session contained an add_to_cart event.
+      - name: has_begin_checkout
+        description: Session contained a begin_checkout event.
+      - name: has_purchase
+        description: Session contained a purchase event.
+      - name: purchase_events
+        description: Count of purchase events in the session.
+      - name: transactions
+        description: Distinct transaction ids in the session.
+      - name: session_revenue_usd
+        description: Purchase revenue in USD for the session.
+        tests:
+          - not_null
+
+  # ---------------------------------------------------------------------------
+  - name: fct_funnel
+    description: >
+      One row per session per funnel step — five rows per session whether or not
+      the step was reached. Dense by design: step-to-step conversion becomes a
+      ratio of two counts over one table, and a step with no traffic on a day
+      appears as a zero rather than disappearing from the series.
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not (is_reached_in_sequence and not is_reached)"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "not (is_reached and first_reached_at is null)"
+    columns:
+      - name: funnel_key
+        description: Surrogate key over (session_key, step_number). Primary key.
+        tests:
+          - unique
+          - not_null
+      - name: session_key
+        description: The session this row describes.
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_sessions')
+                field: session_key
+      - name: user_pseudo_id
+        description: Owning user.
+        tests:
+          - not_null
+      - name: session_date
+        description: Calendar date of the session. Partition key.
+        tests:
+          - not_null
+      - name: session_started_at
+        description: Session start timestamp, UTC.
+      - name: days_since_first_session
+        description: Days between the session and the user's first session.
+      - name: user_first_seen_date
+        description: The user's cohort date.
+      - name: step_number
+        description: 1 through 5. Ordering is the definition of the funnel.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5]
+                quote: false
+      - name: step_name
+        description: Name of the step.
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['session_start', 'view_item', 'add_to_cart', 'begin_checkout', 'purchase']
+      - name: first_reached_at
+        description: Timestamp the step was first reached in this session, null when not reached.
+      - name: step_event_count
+        description: Number of events of this step type in the session, zero when not reached.
+        tests:
+          - not_null
+      - name: is_reached
+        description: >
+          The session fired this event at any point, regardless of whether
+          earlier steps were reached. The permissive definition.
+        tests:
+          - not_null
+      - name: is_reached_in_sequence
+        description: >
+          This step and every step before it were reached. The strict
+          definition, and the one wired to the conversion metrics. It counts
+          5,868 begin_checkout sessions where the permissive definition counts
+          11,106, because carts survive across sessions and this funnel does
+          not.
+        tests:
+          - not_null
+      - name: seconds_from_session_start
+        description: Seconds between session start and first reaching this step.
+      - name: device_category
+        description: Device category at session start.
+      - name: operating_system
+        description: Operating system at session start.
+      - name: browser
+        description: Browser at session start.
+      - name: country
+        description: Country at session start.
+      - name: acquisition_source
+        description: The user's acquisition source.
+      - name: acquisition_medium
+        description: The user's acquisition medium.
+      - name: acquisition_campaign
+        description: The user's acquisition campaign.
+      - name: is_engaged_session
+        description: GA4's engaged-session flag for the owning session.
+      - name: is_cohort_eligible
+        description: True when the owning user's arrival was genuinely observed.
+      - name: session_revenue_usd
+        description: Revenue for the owning session, repeated on every step row. Do NOT sum across steps.

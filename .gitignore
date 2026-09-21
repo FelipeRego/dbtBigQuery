@@ -1,0 +1,23 @@
+# dbt
+target/
+dbt_packages/
+logs/
+.user.yml
+
+# python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# credentials — never commit
+*.json.key
+service-account*.json
+.env
+
+# os
+.DS_Store
+
+# generated preview scratch
+docs/img/*.tmp.svg

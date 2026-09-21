@@ -1,0 +1,71 @@
+name: CI
+
+# Everything here runs without BigQuery credentials. dbt parse validates the
+# models, the semantic models and the metric definitions against each other
+# without touching a warehouse, which is enough to catch the failure this CI
+# exists to prevent: a metric definition changing in YAML while the README's
+# metric dictionary still claims the old one.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      # dbt needs the profile to resolve, not to connect. `dbt parse` never
+      # opens a warehouse connection.
+      DBT_BIGQUERY_PROJECT: ci-placeholder-project
+      DBT_PROFILES_DIR: .
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Create the environment
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install -e .
+
+      - name: Install dbt packages
+        run: .venv/bin/dbt deps
+
+      - name: Parse models, semantic models and metrics
+        run: .venv/bin/dbt parse
+
+      - name: Check the README metric dictionary has not drifted
+        # The one check that earns its place. If someone edits a definition in
+        # metrics.yml and does not regenerate the README, the repo now has two
+        # answers to "what does activation mean" and this fails the build.
+        run: .venv/bin/python scripts/render_metric_docs.py --check
+
+      - name: Assert the agent surface exposes no raw-SQL tool
+        # The governance claim in the README is only true while this holds.
+        run: |
+          .venv/bin/python - <<'PY'
+          import re, sys, pathlib
+          src = pathlib.Path("mcp_server/server.py").read_text()
+          tools = set(re.findall(r"@server\.tool\(\)\s*\ndef\s+(\w+)", src))
+          expected = {
+              "list_metrics", "describe_metric", "list_semantic_models",
+              "list_dimensions", "query_metrics", "explain_metric_sql",
+              "health_check",
+          }
+          if tools != expected:
+              sys.exit(f"MCP tool set changed: {tools ^ expected}. "
+                       "If this is deliberate, update the README and this check.")
+          print(f"MCP exposes {len(tools)} tools, none of which accept SQL.")
+          PY
+
+      - name: Lint
+        run: |
+          uv pip install ruff
+          .venv/bin/ruff check mcp_server scripts
+          .venv/bin/ruff format --check mcp_server scripts

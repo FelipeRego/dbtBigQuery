@@ -1,0 +1,955 @@
+version: 2
+
+# ---------------------------------------------------------------------------
+# Metrics.
+#
+# Every metric carries a `meta` block with four fields: definition, assumption,
+# tradeoff and breaks_if. These are not decoration. The MCP server reads them
+# straight out of the compiled manifest and returns them alongside every number
+# it serves, and scripts/render_metric_docs.py regenerates the README's metric
+# dictionary from them. There is one copy of each definition in this repo, and
+# it is here.
+#
+# If you change a definition, change it here, re-run dbt parse, and the README
+# and the agent's answers both follow. They cannot drift.
+# ---------------------------------------------------------------------------
+
+metrics:
+
+  # === Volume =============================================================
+
+  - name: new_users
+    label: New users
+    description: Users whose first session was genuinely observed inside the loaded window.
+    type: simple
+    type_params:
+      measure: new_users
+    config:
+      meta:
+        grain: user
+        definition: >
+          A distinct user_pseudo_id whose first observed session falls inside
+          the loaded window, excluding users GA4 says it had already seen before
+          the window opened.
+        assumption: >
+          user_pseudo_id is a person. It is not — it is a browser on a device.
+          One human on a laptop and a phone counts twice, and clearing cookies
+          creates a new "new user".
+        tradeoff: >
+          Chosen over GA4's own `first_visit` event count because first_visit
+          fires on the client and is lost whenever the event is blocked, while
+          this derives from the session record we already trust for everything
+          else. The cost is that our number will not tie exactly to the GA4 UI.
+        breaks_if: >
+          Someone drops the left-censoring exclusion. Users active before
+          2020-11-01 then appear as new arrivals on the first few days of the
+          window, inflating early cohorts and making retention look worse than
+          it is for exactly those cohorts.
+
+  - name: sessions
+    label: Sessions
+    description: Count of GA4 sessions.
+    type: simple
+    type_params:
+      measure: sessions
+    config:
+      meta:
+        grain: session
+        definition: >
+          A distinct (user_pseudo_id, ga_session_id) pair. Session boundaries
+          are GA4's: 30 minutes of inactivity, or midnight in the property's
+          reporting timezone, whichever comes first.
+        assumption: >
+          The client-side session id is trustworthy. It is assigned in the
+          browser, so an ad blocker, a cleared cookie mid-visit, or a device
+          asleep in a tab can all end a session that a human would say
+          continued.
+        tradeoff: >
+          Chosen over deriving our own 30-minute-gap boundaries server-side,
+          because this is the number the GA4 UI shows and therefore the number a
+          stakeholder will challenge. The cost is that midnight splits one late
+          visit into two sessions, which depresses session depth for night-time
+          traffic. `sessionisation_disagreement_rate` measures how often this
+          bites.
+        breaks_if: >
+          Someone switches to gap-based sessionisation without restating the
+          metric. Session counts fall, session depth rises, and every
+          per-session rate in the dashboard moves at once with no code change
+          visible in the BI tool.
+
+  - name: revenue
+    label: Revenue (USD)
+    description: Purchase revenue in USD, summed from purchase events.
+    type: simple
+    type_params:
+      measure: event_revenue
+    config:
+      meta:
+        grain: event
+        definition: >
+          Sum of ecommerce.purchase_revenue_in_usd across purchase events. Item
+          revenue, shipping and tax are excluded.
+        assumption: >
+          Every purchase event represents a real, completed order. The GA4
+          export has no refund or cancellation signal in this sample, so
+          returns are invisible.
+        tradeoff: >
+          Taken at event grain rather than from the item array, because the item
+          array double-counts when a purchase event carries both order-level and
+          line-level revenue. The cost is that no product-level revenue split is
+          possible from this metric.
+        breaks_if: >
+          Someone sums revenue from fct_funnel. Session revenue is repeated onto
+          all five step rows, so the total comes out five times too high.
+
+  - name: transactions
+    label: Transactions
+    description: Distinct completed orders.
+    type: simple
+    type_params:
+      measure: transactions
+    config:
+      meta:
+        grain: session
+        definition: Distinct transaction_id values observed on purchase events.
+        assumption: transaction_id is populated and unique per order.
+        tradeoff: >
+          Counted from distinct transaction_id *within a session*, then summed
+          across sessions. That removes the duplication caused by reloading an
+          order-confirmation page inside one visit, but not duplication across
+          visits. On this dataset the three numbers are: 5,692 purchase events,
+          5,258 session-scoped distinct transactions (this metric), and 4,452
+          globally distinct transaction ids. The 806-order gap is order
+          confirmations reopened in a later session.
+        breaks_if: >
+          It is read as "orders placed". It is closer to "order confirmations
+          seen, deduplicated within a visit". For a true order count, take
+          count(distinct transaction_id) across the whole period — which this
+          semantic layer deliberately does not expose as an additive measure,
+          because a distinct count cannot be summed across time buckets.
+
+  # === Activation =========================================================
+
+  - name: activation_eligible_users
+    label: Activation-eligible users
+    description: Observed new users whose activation window has fully elapsed.
+    type: simple
+    type_params:
+      measure: activation_eligible_users
+    config:
+      meta:
+        grain: user
+        definition: >
+          Observed new users for whom the loaded window extends at least
+          `activation_window_days` past their first session.
+        assumption: The end of the loaded window is the end of observation.
+        tradeoff: >
+          Excluding recent cohorts costs us the freshest data, which is the data
+          people most want. The alternative — including them — guarantees the
+          most recent points on every activation chart trend downwards for
+          purely mechanical reasons.
+        breaks_if: >
+          Someone reports activation over a window that has not closed. The last
+          seven days of any activation chart will slope down and somebody will
+          open an investigation into it.
+
+  - name: activated_users
+    label: Activated users
+    description: Eligible users whose first purchase landed inside the activation window.
+    type: simple
+    type_params:
+      measure: activated_users
+    config:
+      meta:
+        grain: user
+        definition: >
+          An eligible new user whose first purchase occurred within
+          `activation_window_days` (default 7) of their first observed session.
+        assumption: Purchase is the moment the user has got value from the product.
+        tradeoff: See activation_rate.
+        breaks_if: See activation_rate.
+
+  - name: activation_rate
+    label: Activation rate
+    description: >
+      Share of new users who made a first purchase within seven days of their
+      first session, over users whose seven days have fully elapsed.
+    type: ratio
+    type_params:
+      numerator: activated_users
+      denominator: activation_eligible_users
+    config:
+      meta:
+        grain: user
+        definition: >
+          activated_users / activation_eligible_users. A user activates when
+          their first purchase falls within `activation_window_days` of their
+          first observed session. Both sides of the ratio exclude left-censored
+          users and users whose window has not closed.
+        assumption: >
+          Purchase is the activation moment, and seven days is long enough for a
+          genuinely interested buyer to get there. For a merchandise store where
+          most of the catalogue is under $50, that is defensible; for a
+          considered purchase it would not be.
+        tradeoff: >
+          Chosen over "any add-to-cart" because add-to-cart survives neither bot
+          traffic nor idle curiosity — it is cheap to trigger and does not commit
+          the user to anything, so it measures interest rather than value
+          delivered. Purchase is expensive to fake and unambiguous. The cost is
+          real: slow-considered categories look worse than they are, because a
+          user who returns on day nine to buy a $300 item is counted as a
+          failure. A second cost is that this metric can only move when
+          checkout works, so it conflates product-market fit with payment
+          reliability.
+        breaks_if: >
+          Someone widens the window to 30 days to make the number look better.
+          On this dataset that moves activation from 1.18% to 1.57% — a third
+          higher, and less than most people expect, because the buyers who were
+          going to buy mostly did so quickly. The real cost is elsewhere: the
+          eligible population falls from 242,437 users to 173,333, a 28% drop,
+          because every cohort from the last 30 days leaves the denominator. The
+          series gets shorter at the same time as it gets higher, and a 30-day
+          window cannot tell you on Tuesday that Monday's release broke
+          onboarding.
+
+  - name: avg_days_to_first_purchase
+    label: Average days to first purchase
+    description: Mean days from first session to first purchase, over purchasers only.
+    type: simple
+    type_params:
+      measure: avg_days_to_first_purchase
+    config:
+      meta:
+        grain: user
+        definition: Mean of days_to_first_purchase across users who ever purchased.
+        assumption: >
+          Non-purchasers are excluded rather than counted as infinite. This makes
+          the metric a diagnostic for "how long should the activation window be",
+          not a measure of how well the funnel works.
+        tradeoff: >
+          A mean over purchasers is badly skewed by a small number of long
+          considerers. It is published because its shape justifies the choice of
+          a seven-day activation window, not because it is a good KPI.
+        breaks_if: >
+          Someone reads it as "the average customer buys in N days". It is the
+          average of those who bought at all, which is a much smaller and much
+          keener population.
+
+  # === Retention ==========================================================
+
+  - name: d7_eligible_users
+    label: D7-eligible users
+    description: Observed new users with a full seven days elapsed since their first session.
+    type: simple
+    type_params:
+      measure: d7_eligible_users
+    config:
+      meta:
+        grain: user
+        definition: Observed new users whose first session is at least seven days before the end of the window.
+        assumption: The end of the loaded window is the end of observation.
+        tradeoff: The last seven cohorts of the window are unreportable.
+        breaks_if: Dropped, in which case the newest cohorts show artificially low retention.
+
+  - name: d7_retained_users
+    label: D7-retained users
+    description: Eligible users who returned on any of days 1-7.
+    type: simple
+    type_params:
+      measure: d7_retained_users
+    config:
+      meta:
+        grain: user
+        definition: Eligible users with at least one session on days 1 through 7 after their first session.
+        assumption: Any session counts as a return, however short.
+        tradeoff: See d7_retention_rate.
+        breaks_if: See d7_retention_rate.
+
+  - name: d7_retention_rate
+    label: D7 retention rate
+    description: >
+      Share of new users who came back at least once on days 1-7, over users
+      whose seven days have fully elapsed.
+    type: ratio
+    type_params:
+      numerator: d7_retained_users
+      denominator: d7_eligible_users
+    config:
+      meta:
+        grain: user
+        definition: >
+          d7_retained_users / d7_eligible_users. A user is retained if they had
+          at least one session on any of days 1-7 after their first session. Day
+          0 is excluded.
+        assumption: >
+          Returning at all is the signal. A user who returns on day 2 for eight
+          seconds and bounces counts exactly the same as one who returns daily.
+        tradeoff: >
+          This is "bounded" or "rolling" D7 — any return in the first week —
+          chosen over "classic" D7, which counts only users active on day 7
+          exactly. Bounded D7 is far less noisy on small cohorts and matches how
+          most people describe retention out loud. The cost is that it is
+          structurally higher than classic D7 and not comparable to a
+          competitor's number without asking which one they mean. Day 0 is
+          excluded because a same-day return is part of the acquisition visit,
+          not evidence of habit.
+        breaks_if: >
+          Someone compares it with a classic day-7-exact figure, or includes day
+          0. Including day 0 returns exactly 100% — not approximately, exactly —
+          because every eligible user has a session on day 0 by construction:
+          it is the session that put them in the cohort. A retention metric that
+          reads 100% for every segment on every day is the clearest possible
+          signal that day 0 crept into the numerator.
+
+  - name: d1_eligible_users
+    label: D1-eligible users
+    description: Observed new users with at least one full day elapsed.
+    type: simple
+    type_params:
+      measure: d1_eligible_users
+    config:
+      meta:
+        grain: user
+        definition: Observed new users whose first session is at least one day before the end of the window.
+        assumption: The end of the loaded window is the end of observation.
+        tradeoff: A component metric, published so that d1_retention_rate's denominator is inspectable.
+        breaks_if: Used on its own as a headline number rather than as a ratio component.
+
+  - name: d1_retained_users
+    label: D1-retained users
+    description: Eligible users who returned on day 1.
+    type: simple
+    type_params:
+      measure: d1_retained_users
+    config:
+      meta:
+        grain: user
+        definition: Eligible users with at least one session on the calendar day after their first session.
+        assumption: The end of the loaded window is the end of observation.
+        tradeoff: A component metric of d1_retention_rate.
+        breaks_if: Used on its own as a headline number rather than as a ratio component.
+
+  - name: d1_retention_rate
+    label: D1 retention rate
+    description: Share of eligible new users who returned on day 1.
+    type: ratio
+    type_params:
+      numerator: d1_retained_users
+      denominator: d1_eligible_users
+    config:
+      meta:
+        grain: user
+        definition: d1_retained_users / d1_eligible_users, where day 1 means the calendar day after the first session.
+        assumption: Calendar days, in the property's reporting timezone, not rolling 24-hour periods.
+        tradeoff: >
+          Calendar-day bucketing means a user who arrives at 23:50 and returns
+          at 00:10 counts as retained after 20 minutes. Rolling 24-hour windows
+          would be fairer but do not line up with how the cohort chart is drawn.
+        breaks_if: >
+          The property's reporting timezone changes. Every day boundary moves,
+          and historical D1 shifts without any code changing.
+
+  - name: d30_eligible_users
+    label: D30-eligible users
+    description: Observed new users with a full thirty days elapsed.
+    type: simple
+    type_params:
+      measure: d30_eligible_users
+    config:
+      meta:
+        grain: user
+        definition: Observed new users whose first session is at least thirty days before the end of the window.
+        assumption: The end of the loaded window is the end of observation.
+        tradeoff: On a 92-day dataset this discards roughly a third of all cohorts.
+        breaks_if: Used on its own as a headline number rather than as a ratio component.
+
+  - name: d30_retained_users
+    label: D30-retained users
+    description: Eligible users who returned on any of days 1-30.
+    type: simple
+    type_params:
+      measure: d30_retained_users
+    config:
+      meta:
+        grain: user
+        definition: Eligible users with at least one session on days 1 through 30 after their first session.
+        assumption: The end of the loaded window is the end of observation.
+        tradeoff: A component metric of d30_retention_rate.
+        breaks_if: Used on its own as a headline number rather than as a ratio component.
+
+  - name: d30_retention_rate
+    label: D30 retention rate
+    description: Share of eligible new users who returned on any of days 1-30.
+    type: ratio
+    type_params:
+      numerator: d30_retained_users
+      denominator: d30_eligible_users
+    config:
+      meta:
+        grain: user
+        definition: d30_retained_users / d30_eligible_users.
+        assumption: The same bounded definition as D7, over a 30-day window.
+        tradeoff: >
+          On a 92-day dataset, requiring a full 30-day window discards the last
+          third of the cohorts. The metric is included for completeness but the
+          eligible population is small enough that segment-level cuts get noisy
+          fast.
+        breaks_if: >
+          Someone slices it by channel and campaign at once. The eligible
+          population is roughly a third of the dataset before any filtering.
+
+  # === Engagement and session depth =======================================
+
+  - name: session_depth
+    label: Session depth (events per session)
+    description: Average number of events per session.
+    type: ratio
+    type_params:
+      numerator: session_events
+      denominator: sessions
+    config:
+      meta:
+        grain: session
+        definition: Total events divided by total sessions.
+        assumption: >
+          All events are equally meaningful. They are not — `user_engagement`
+          and `scroll` together are 36% of the event volume in this dataset, and
+          both fire without the user deciding anything.
+        tradeoff: >
+          Events per session was chosen over page views per session because it
+          captures interaction on single-page flows that never fire a second
+          page_view. The cost is that the number is dominated by automatic
+          events, so it moves when GA4's tagging changes even though user
+          behaviour did not.
+        breaks_if: >
+          Someone compares session depth across a tagging change. Adding a
+          single new automatic event to the site raises this metric everywhere,
+          overnight, with no behavioural change whatsoever.
+
+  - name: session_events
+    label: Events in sessions
+    description: Total events, counted at session grain.
+    type: simple
+    type_params:
+      measure: session_events
+    config:
+      meta:
+        grain: session
+        definition: Sum of events_in_session across sessions.
+        assumption: Every event in a session is attributable to that session.
+        tradeoff: Counts automatic events alongside deliberate ones.
+        breaks_if: Compared against the event-grain `events` count filtered differently.
+
+  - name: engagement_rate
+    label: Engagement rate (GA4 definition)
+    description: Share of sessions GA4 marks as engaged.
+    type: ratio
+    type_params:
+      numerator: engaged_sessions
+      denominator: sessions
+    config:
+      meta:
+        grain: session
+        definition: >
+          engaged_sessions / sessions, where engagement is GA4's own
+          client-side flag: the session lasted over 10 seconds, or had a
+          conversion, or had two or more page views.
+        assumption: The client-side flag arrived intact.
+        tradeoff: >
+          Chosen over the independently derived definition so that the number
+          reconciles with the GA4 UI. `engagement_rate_derived` computes the
+          same rule server-side, and the difference between the two is a direct
+          measure of how much client-side signal is being lost.
+        breaks_if: >
+          Compared with engagement_rate_derived without saying which is which.
+          They answer the same question through different plumbing and will not
+          agree.
+
+  - name: engagement_rate_derived
+    label: Engagement rate (derived definition)
+    description: Share of sessions meeting the engagement rule computed server-side.
+    type: ratio
+    type_params:
+      numerator: engaged_sessions_derived
+      denominator: sessions
+    config:
+      meta:
+        grain: session
+        definition: >
+          engaged_sessions_derived / sessions, where engagement is recomputed
+          from the event stream: duration >= 10s OR page_views >= 2 OR a
+          purchase occurred.
+        assumption: >
+          Duration measured as last-event minus first-event is a fair proxy for
+          time on site. It is not, for a single-event session, which always
+          measures zero.
+        tradeoff: >
+          Published purely as a control on the GA4 flag. Using it as the headline
+          engagement number would mean explaining to every stakeholder why it
+          does not match the GA4 UI.
+        breaks_if: >
+          It becomes the default without the comparison being documented.
+
+  - name: sessionisation_disagreement_rate
+    label: Sessionisation disagreement rate
+    description: >
+      Share of GA4 sessions that contain an internal inactivity gap long enough
+      that a server-side rule would have split them in two.
+    type: ratio
+    type_params:
+      numerator: sessions_split_by_gap
+      denominator: sessions
+    config:
+      meta:
+        grain: session
+        definition: >
+          sessions_split_by_gap / sessions, where a session is "split" if any
+          two consecutive events in it are more than `session_gap_minutes`
+          (default 30) apart.
+        assumption: >
+          A 30-minute gap means the user left. It might instead mean a tab sat
+          open in the background, which GA4's own timeout should have ended.
+        tradeoff: >
+          This is a data-quality metric, not a product metric. It exists so that
+          the choice to adopt GA4's session boundaries can be defended with a
+          number instead of a shrug.
+        breaks_if: >
+          It is put on a business dashboard. It answers a question about
+          instrumentation that no commercial stakeholder asked.
+
+  - name: engaged_sessions
+    label: Engaged sessions (GA4 definition)
+    description: Sessions GA4's client-side flag marks as engaged.
+    type: simple
+    type_params:
+      measure: engaged_sessions
+    config:
+      meta:
+        grain: session
+        definition: Sessions where GA4 set session_engaged = '1' on any event.
+        assumption: The client-side flag arrived intact.
+        tradeoff: A component metric of engagement_rate; reconciles with the GA4 UI.
+        breaks_if: Compared directly with engaged_sessions_derived without stating which definition is which.
+
+  - name: engaged_sessions_derived
+    label: Engaged sessions (derived definition)
+    description: Sessions meeting the engagement rule recomputed server-side.
+    type: simple
+    type_params:
+      measure: engaged_sessions_derived
+    config:
+      meta:
+        grain: session
+        definition: "Sessions where duration >= 10s OR page_views >= 2 OR a purchase occurred."
+        assumption: Last-event-minus-first-event is a fair proxy for time on site.
+        tradeoff: A control on the GA4 flag, not a headline number.
+        breaks_if: Promoted to the default without documenting why it differs from the GA4 UI.
+
+  - name: sessions_split_by_gap
+    label: Sessions a gap rule would split
+    description: Sessions containing an inactivity gap longer than the project's threshold.
+    type: simple
+    type_params:
+      measure: sessions_split_by_gap
+    config:
+      meta:
+        grain: session
+        definition: Sessions with at least one pair of consecutive events more than session_gap_minutes apart.
+        assumption: A 30-minute in-session gap means the user left.
+        tradeoff: A data-quality component metric, not a product metric.
+        breaks_if: Put on a business dashboard.
+
+  - name: session_revenue
+    label: Session revenue (USD)
+    description: Purchase revenue in USD, measured at session grain.
+    type: simple
+    type_params:
+      measure: session_revenue
+    config:
+      meta:
+        grain: session
+        definition: Sum of session_revenue_usd across sessions.
+        assumption: Revenue belongs to the session in which the purchase fired.
+        tradeoff: >
+          Kept separate from the event-grain `revenue` metric so that
+          revenue_per_session and average_order_value have numerator and
+          denominator on the same grain. The two totals agree today.
+        breaks_if: Summed from fct_funnel, where it is repeated across five step rows.
+
+  - name: revenue_per_session
+    label: Revenue per session (USD)
+    description: Session revenue divided by sessions.
+    type: ratio
+    type_params:
+      numerator: session_revenue
+      denominator: sessions
+    config:
+      meta:
+        grain: session
+        definition: Total session revenue in USD divided by total sessions.
+        assumption: Revenue belongs to the session in which the purchase event fired.
+        tradeoff: >
+          Last-click within-session attribution. A user who researched across
+          four sessions and bought in the fifth gives all the credit to the
+          fifth. Multi-touch attribution is out of scope on a dataset whose
+          traffic source is user-scoped and partly obfuscated.
+        breaks_if: >
+          Used to compare acquisition channels. Because GA4's traffic_source is
+          first-touch and user-scoped, every session a user ever has is credited
+          to the channel that first acquired them, so this will systematically
+          flatter whichever channel wins first contact.
+
+  - name: average_order_value
+    label: Average order value (USD)
+    description: Revenue divided by transactions.
+    type: ratio
+    type_params:
+      numerator: session_revenue
+      denominator: transactions
+    config:
+      meta:
+        grain: session
+        definition: Total session revenue divided by distinct transactions.
+        assumption: Revenue and transaction counts cover the same set of orders.
+        tradeoff: >
+          Both sides are taken at session grain so they cannot drift apart under
+          grouping. The cost is that the denominator is session-scoped distinct
+          transactions, so this reports $68.88 on the full dataset where a
+          globally deduplicated order count would report $81.35. The
+          session-scoped version was chosen because it stays correct when the
+          metric is sliced by day or by channel; the global one does not.
+        breaks_if: >
+          It is compared against an order-management system's AOV. That system
+          counts orders once; this counts order confirmations once per visit.
+
+  # === Funnel =============================================================
+
+  - name: sessions_reaching_view_item
+    label: Sessions reaching view item
+    description: Sessions that viewed an item, having reached every prior step.
+    type: simple
+    type_params:
+      measure: funnel_sessions_in_sequence
+    filter: "{{ Dimension('funnel_step__step_name') }} = 'view_item'"
+    config:
+      meta:
+        grain: session
+        definition: Sessions where is_reached_in_sequence is true at step 2.
+        assumption: The five steps are strictly ordered.
+        tradeoff: See purchase_conversion_rate.
+        breaks_if: Mixed with the permissive measure, which counts steps reached out of order.
+
+  - name: sessions_reaching_add_to_cart
+    label: Sessions reaching add to cart
+    description: Sessions that added to cart, having reached every prior step.
+    type: simple
+    type_params:
+      measure: funnel_sessions_in_sequence
+    filter: "{{ Dimension('funnel_step__step_name') }} = 'add_to_cart'"
+    config:
+      meta:
+        grain: session
+        definition: Sessions where is_reached_in_sequence is true at step 3.
+        assumption: >
+          A cart add always follows an item view. GA4 lets a user add from a
+          category page without firing view_item, so the strict measure
+          deliberately does not count those — 291 sessions on this dataset,
+          15,188 permissive against 14,897 strict. At the cart step the two
+          definitions almost agree; it is further down the funnel that they
+          diverge.
+        tradeoff: See purchase_conversion_rate.
+        breaks_if: Compared against the permissive count, which is larger.
+
+  - name: sessions_reaching_begin_checkout
+    label: Sessions reaching begin checkout
+    description: Sessions that began checkout, having reached every prior step.
+    type: simple
+    type_params:
+      measure: funnel_sessions_in_sequence
+    filter: "{{ Dimension('funnel_step__step_name') }} = 'begin_checkout'"
+    config:
+      meta:
+        grain: session
+        definition: Sessions where is_reached_in_sequence is true at step 4.
+        assumption: The five steps are strictly ordered.
+        tradeoff: See purchase_conversion_rate.
+        breaks_if: Mixed with the permissive measure.
+
+  - name: sessions_reaching_purchase
+    label: Sessions reaching purchase
+    description: Sessions that purchased, having reached every prior step.
+    type: simple
+    type_params:
+      measure: funnel_sessions_in_sequence
+    filter: "{{ Dimension('funnel_step__step_name') }} = 'purchase'"
+    config:
+      meta:
+        grain: session
+        definition: Sessions where is_reached_in_sequence is true at step 5.
+        assumption: The five steps are strictly ordered.
+        tradeoff: See purchase_conversion_rate.
+        breaks_if: Mixed with the permissive measure.
+
+  - name: sessions_starting_funnel
+    label: Sessions entering the funnel
+    description: Sessions that fired session_start. Effectively all sessions.
+    type: simple
+    type_params:
+      measure: funnel_sessions_in_sequence
+    filter: "{{ Dimension('funnel_step__step_name') }} = 'session_start'"
+    config:
+      meta:
+        grain: session
+        definition: Sessions where is_reached_in_sequence is true at step 1.
+        assumption: >
+          Every session fires session_start. Not quite true — a session can be
+          stitched from events that arrive after the start event was lost.
+        tradeoff: >
+          Used as the funnel entry denominator rather than the raw `sessions`
+          metric, so that the top of the funnel is measured the same way as
+          every other step.
+        breaks_if: >
+          Swapped for the `sessions` metric. The two differ slightly, and the
+          difference will be read as a conversion drop at step one.
+
+  - name: purchase_conversion_rate
+    label: Session purchase conversion rate
+    description: Share of funnel-entering sessions that completed a purchase in sequence.
+    type: ratio
+    type_params:
+      numerator: sessions_reaching_purchase
+      denominator: sessions_starting_funnel
+    config:
+      meta:
+        grain: session
+        definition: >
+          sessions_reaching_purchase / sessions_starting_funnel, both using the
+          strict in-sequence definition: a step counts only when every prior
+          step was also reached in the same session.
+        assumption: >
+          The user journey is view_item then add_to_cart then begin_checkout
+          then purchase, within one session. Cross-session journeys — research
+          on mobile, buy on desktop next day — are invisible to this metric.
+        tradeoff: >
+          Strict sequencing was chosen over permissive step-reach because the
+          permissive version produces conversion rates above 100% at the cart
+          step: GA4 fires add_to_cart from category pages without a preceding
+          view_item. The cost is that the strict version undercounts genuine
+          cart adds, so the absolute rate is conservative. Both measures are
+          published; the strict one is wired to the metric.
+        breaks_if: >
+          Someone builds the same funnel on `is_reached` instead of
+          `is_reached_in_sequence`. On this dataset that moves begin_checkout
+          from 5,868 sessions to 11,106 and purchase from 2,816 to 4,848 — the
+          permissive counts are 89% and 72% higher respectively. The gap is
+          concentrated at checkout, not at the cart, because carts persist
+          across sessions while this funnel does not: a user who adds to cart on
+          Monday and checks out on Tuesday has a Tuesday session that begins
+          checkout with no preceding cart add. Neither number is wrong; mixing
+          them inside one chart is.
+
+  - name: checkout_completion_rate
+    label: Checkout completion rate
+    description: Share of sessions that began checkout and went on to purchase.
+    type: ratio
+    type_params:
+      numerator: sessions_reaching_purchase
+      denominator: sessions_reaching_begin_checkout
+    config:
+      meta:
+        grain: session
+        definition: sessions_reaching_purchase / sessions_reaching_begin_checkout, both strict in-sequence.
+        assumption: >
+          Checkout abandonment is a product problem. Some of it is payment
+          failure, which this dataset cannot distinguish.
+        tradeoff: >
+          The narrowest funnel step pair, and therefore the most actionable —
+          but also the one with the smallest denominator, so daily slices get
+          noisy quickly.
+        breaks_if: >
+          Sliced by channel and device at once on a single day. On this dataset
+          the begin_checkout population is under 500 sessions a day.
+
+  # === Feature adoption ===================================================
+
+  - name: feature_adopters_7d
+    label: Feature adopters (first 7 days)
+    description: Distinct users who took a deliberate feature action in their first seven days.
+    type: simple
+    type_params:
+      measure: feature_adopters_7d
+    config:
+      meta:
+        grain: user
+        definition: >
+          Distinct eligible users with at least one user-initiated feature event
+          on days 0-7 after their first session. Across all features this is
+          25,476 users out of 242,437 eligible.
+        assumption: >
+          Trying a feature once is adoption. It is closer to trial than to
+          adoption; a repeat-use definition would be stronger but this sample's
+          92-day window leaves little room for one.
+        tradeoff: See feature_adoption_rate.
+        breaks_if: See feature_adoption_rate.
+
+  - name: adoption_base_users
+    label: Adoption base users
+    description: Eligible users in the cohort — the denominator for adoption.
+    type: simple
+    type_params:
+      measure: adoption_base_users
+    config:
+      meta:
+        grain: user
+        definition: Distinct users who are neither left-censored nor inside an open seven-day window.
+        assumption: The end of the loaded window is the end of observation.
+        tradeoff: Computed on the event table so it shares a join path and time grain with the numerator.
+        breaks_if: >
+          Replaced with the user-grain `new_users` metric. The two populations
+          are almost identical but not exactly, and the ratio can then exceed 1
+          for a small segment.
+
+  - name: feature_adoption_rate
+    label: Feature adoption rate (first 7 days)
+    description: >
+      Share of new users who deliberately used any catalogued feature within
+      seven days of arriving. Do NOT group this by feature_name — use the
+      per-feature metrics instead, for the reason given in breaks_if.
+    type: ratio
+    type_params:
+      numerator: feature_adopters_7d
+      denominator: adoption_base_users
+    config:
+      meta:
+        grain: user
+        definition: >
+          feature_adopters_7d / adoption_base_users. A user adopts a feature
+          when they fire an event mapped to it in seeds/feature_catalogue.csv
+          with is_user_initiated = true, within seven days of their first
+          session.
+        assumption: >
+          The feature catalogue is complete and correctly classified. It is a
+          hand-maintained seed file; a feature nobody added to it has an
+          adoption rate of zero by construction, not by evidence.
+        tradeoff: >
+          Impression events are excluded. `view_promotion` fires 190,104 times
+          in this sample against 9,450 `select_promotion` clicks — a 20:1 ratio
+          — so counting impressions would report promotions adoption near 100%
+          and mean nothing. The cost is that a feature whose value is being
+          *seen* rather than clicked cannot be measured this way at all.
+
+          The seven-day window is inherited from the activation definition so
+          the two metrics can be read on the same axis. That is a convenience,
+          not a finding: nothing says feature adoption and first purchase
+          operate on the same clock.
+        breaks_if: >
+          Someone groups this metric by feature_name. A ratio metric's group-by
+          applies to the denominator as well as the numerator, so grouping by
+          feature turns the denominator from "all eligible users" into "eligible
+          users who used this feature" — and the ratio collapses towards 1. On
+          this dataset it returns 96% for site_search, against the true 5.1%.
+          The four per-feature metrics avoid this by filtering the numerator
+          only, which is why they exist as separate metrics rather than as a
+          slice of this one.
+
+          It also breaks if someone removes the is_user_initiated filter or
+          flags an impression event as user-initiated: adoption then jumps
+          towards 100% and the metric silently becomes a measure of page
+          traffic.
+
+  - name: feature_adoption_rate_site_search
+    label: Feature adoption rate — site search
+    description: Share of new users who used on-site search within seven days.
+    type: ratio
+    type_params:
+      numerator:
+        name: feature_adopters_7d
+        filter: "{{ Dimension('event__feature_name') }} = 'site_search'"
+      denominator: adoption_base_users
+    config:
+      meta:
+        grain: user
+        definition: feature_adoption_rate filtered to the site_search feature (event view_search_results).
+        assumption: Seeing a search result set means the user searched deliberately.
+        tradeoff: >
+          Search is the clearest case of a user-initiated feature in this
+          property, which is why it is broken out. Note that a user who typed a
+          query returning zero results still counts as an adopter.
+        breaks_if: >
+          The site adds an auto-suggest panel that fires view_search_results on
+          keystroke. Adoption then measures typing, not searching.
+
+  - name: feature_adoption_rate_promotions
+    label: Feature adoption rate — promotions
+    description: Share of new users who clicked a merchandising promotion within seven days.
+    type: ratio
+    type_params:
+      numerator:
+        name: feature_adopters_7d
+        filter: "{{ Dimension('event__feature_name') }} = 'promotions'"
+      denominator: adoption_base_users
+    config:
+      meta:
+        grain: user
+        definition: >
+          feature_adoption_rate filtered to the promotions feature. Counts
+          select_promotion only; view_promotion is catalogued as an impression
+          and excluded.
+        assumption: A promotion click is a deliberate act of engagement with merchandising.
+        tradeoff: >
+          This is the metric that most clearly demonstrates why the
+          impression/action distinction is in the catalogue at all — the two
+          event types differ by 20x in this sample.
+        breaks_if: >
+          view_promotion is reclassified as user-initiated. The rate leaps and
+          the metric stops distinguishing merchandising that works from
+          merchandising that merely renders.
+
+  - name: feature_adoption_rate_product_list
+    label: Feature adoption rate — product list
+    description: Share of new users who clicked through from a list or category page within seven days.
+    type: ratio
+    type_params:
+      numerator:
+        name: feature_adopters_7d
+        filter: "{{ Dimension('event__feature_name') }} = 'product_list'"
+      denominator: adoption_base_users
+    config:
+      meta:
+        grain: user
+        definition: feature_adoption_rate filtered to product_list (event select_item).
+        assumption: >
+          A click from a list is navigation *and* a feature interaction. This is
+          the weakest of the four feature definitions — browsing a category is
+          arguably just using the site.
+        tradeoff: >
+          Included because it is the highest-volume user-initiated feature
+          signal in this property and gives the adoption chart a baseline to
+          read the others against.
+        breaks_if: >
+          Read as evidence that a discovery feature is working. It largely
+          measures ordinary navigation.
+
+  - name: feature_adoption_rate_outbound_click
+    label: Feature adoption rate — outbound click
+    description: Share of new users who clicked a link leading off the property within seven days.
+    type: ratio
+    type_params:
+      numerator:
+        name: feature_adopters_7d
+        filter: "{{ Dimension('event__feature_name') }} = 'outbound_click'"
+      denominator: adoption_base_users
+    config:
+      meta:
+        grain: user
+        definition: feature_adoption_rate filtered to outbound_click (GA4's automatic `click` event).
+        assumption: An outbound click is a deliberate action worth measuring.
+        tradeoff: >
+          Only 1,446 such events exist in the whole sample, so this metric is
+          included mainly as a worked example of a low-volume feature: the rate
+          is near zero and any segment cut of it is noise. A metric that cannot
+          support the slices people will want is worth labelling as such before
+          somebody builds a dashboard on it.
+        breaks_if: >
+          It is sliced by anything. At this volume a single day's segment can
+          swing the rate by an order of magnitude.

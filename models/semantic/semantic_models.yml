@@ -1,0 +1,463 @@
+version: 2
+
+# ---------------------------------------------------------------------------
+# MetricFlow semantic models.
+#
+# A semantic model is the contract between a dbt table and the metrics built on
+# it: which column is the entity, which columns may be grouped by, and which
+# columns may be aggregated. Nothing outside this file is allowed to aggregate
+# these tables, which is what makes "governed" mean something.
+#
+# One convention runs through every measure here: eligibility is baked into the
+# measure expression, not left as a filter for the caller to remember. A
+# consumer cannot accidentally compute activation over users whose seven days
+# have not elapsed, because no measure exists that would let them.
+# ---------------------------------------------------------------------------
+
+semantic_models:
+
+  # -------------------------------------------------------------------------
+  - name: users
+    description: >
+      User-grain semantic model over dim_users. The home of activation and
+      retention. Its time dimension is the user's cohort date, not an event
+      date: a retention number is a property of a cohort, and dating it by the
+      day the returning session happened would produce a chart nobody can act on.
+    model: ref('dim_users')
+    defaults:
+      agg_time_dimension: first_seen_date
+
+    entities:
+      - name: user
+        type: primary
+        expr: user_pseudo_id
+
+    dimensions:
+      - name: first_seen_date
+        description: The user's cohort date — the date of their first observed session.
+        type: time
+        type_params:
+          time_granularity: day
+      - name: last_seen_date
+        description: Date of the user's most recent observed session.
+        type: time
+        type_params:
+          time_granularity: day
+      - name: acquisition_source
+        description: Source that first acquired the user, from GA4's user-scoped traffic_source.
+        type: categorical
+      - name: acquisition_medium
+        description: Medium that first acquired the user, e.g. organic, cpc, referral.
+        type: categorical
+      - name: acquisition_campaign
+        description: Campaign that first acquired the user.
+        type: categorical
+      - name: first_device_category
+        description: Device category of the user's first session — desktop, mobile or tablet.
+        type: categorical
+      - name: first_operating_system
+        description: Operating system of the user's first session.
+        type: categorical
+      - name: first_country
+        description: Country of the user's first session.
+        type: categorical
+      - name: is_left_censored
+        description: The user existed before the loaded window, so their "first session" is an artefact of the cut.
+        type: categorical
+      - name: has_full_activation_window
+        description: The activation window has fully elapsed for this user.
+        type: categorical
+      - name: has_full_d7_window
+        description: Seven days have fully elapsed since the user's first session.
+        type: categorical
+      - name: has_full_d30_window
+        description: Thirty days have fully elapsed since the user's first session.
+        type: categorical
+      - name: is_cohort_eligible
+        description: The user's arrival was genuinely observed rather than inferred from a truncated window.
+        type: categorical
+      - name: is_activated
+        description: The user made a first purchase inside the activation window.
+        type: categorical
+      - name: is_retained_d7
+        description: The user returned on any of days 1-7 after their first session.
+        type: categorical
+
+    measures:
+      - name: all_users
+        description: Every user in the table, including left-censored ones. Use for volume, never for rates.
+        agg: count_distinct
+        expr: user_pseudo_id
+
+      - name: new_users
+        description: Users whose arrival was genuinely observed inside the window.
+        agg: sum
+        expr: "case when not is_left_censored then 1 else 0 end"
+
+      - name: activation_eligible_users
+        description: >
+          Observed arrivals whose activation window has fully elapsed. The
+          denominator of activation rate.
+        agg: sum
+        expr: "case when not is_left_censored and has_full_activation_window then 1 else 0 end"
+
+      - name: activated_users
+        description: >
+          Eligible users whose first purchase landed inside the activation
+          window. Eligibility is inside the expression on purpose.
+        agg: sum
+        expr: "case when is_activated and not is_left_censored and has_full_activation_window then 1 else 0 end"
+
+      - name: d1_eligible_users
+        description: Observed arrivals with at least one full day elapsed.
+        agg: sum
+        expr: "case when not is_left_censored and has_full_d1_window then 1 else 0 end"
+
+      - name: d1_retained_users
+        description: Eligible users who returned on day 1.
+        agg: sum
+        expr: "case when is_retained_d1 and not is_left_censored and has_full_d1_window then 1 else 0 end"
+
+      - name: d7_eligible_users
+        description: Observed arrivals with a full seven days elapsed. The denominator of D7 retention.
+        agg: sum
+        expr: "case when not is_left_censored and has_full_d7_window then 1 else 0 end"
+
+      - name: d7_retained_users
+        description: Eligible users who returned on any of days 1-7.
+        agg: sum
+        expr: "case when is_retained_d7 and not is_left_censored and has_full_d7_window then 1 else 0 end"
+
+      - name: d30_eligible_users
+        description: Observed arrivals with a full thirty days elapsed.
+        agg: sum
+        expr: "case when not is_left_censored and has_full_d30_window then 1 else 0 end"
+
+      - name: d30_retained_users
+        description: Eligible users who returned on any of days 1-30.
+        agg: sum
+        expr: "case when is_retained_d30 and not is_left_censored and has_full_d30_window then 1 else 0 end"
+
+      - name: user_lifetime_revenue
+        description: Sum of purchase revenue in USD across all of a user's sessions.
+        agg: sum
+        expr: lifetime_revenue_usd
+
+      - name: avg_days_to_first_purchase
+        description: >
+          Mean days from first session to first purchase, over purchasers only.
+          Non-purchasers are null and therefore excluded, which is why this is a
+          diagnostic for the activation window rather than a target in itself.
+        agg: average
+        expr: days_to_first_purchase
+
+  # -------------------------------------------------------------------------
+  - name: sessions
+    description: >
+      Session-grain semantic model over fct_sessions. The home of session depth
+      and engagement. Carries both GA4's engagement flag and the independently
+      derived one so the two can be compared rather than conflated.
+    model: ref('fct_sessions')
+    defaults:
+      agg_time_dimension: session_date
+
+    entities:
+      - name: session
+        type: primary
+        expr: session_key
+      - name: user
+        type: foreign
+        expr: user_pseudo_id
+
+    dimensions:
+      - name: session_date
+        description: Date the session started.
+        type: time
+        type_params:
+          time_granularity: day
+      - name: user_first_seen_date
+        description: Cohort date of the user who owns the session.
+        type: time
+        type_params:
+          time_granularity: day
+      - name: device_category
+        description: Device category at session start.
+        type: categorical
+      - name: operating_system
+        description: Operating system at session start.
+        type: categorical
+      - name: browser
+        description: Browser at session start.
+        type: categorical
+      - name: country
+        description: Country at session start.
+        type: categorical
+      - name: acquisition_source
+        description: The owning user's acquisition source.
+        type: categorical
+      - name: acquisition_medium
+        description: The owning user's acquisition medium.
+        type: categorical
+      - name: acquisition_campaign
+        description: The owning user's acquisition campaign.
+        type: categorical
+      - name: landing_page
+        description: First page URL of the session.
+        type: categorical
+      - name: is_engaged_session
+        description: GA4's client-side engaged-session flag. The governed definition.
+        type: categorical
+      - name: is_engaged_session_derived
+        description: The independently derived engagement definition, for comparison.
+        type: categorical
+      - name: is_first_session
+        description: The session is the owning user's first observed session.
+        type: categorical
+      - name: is_split_by_inactivity_rule
+        description: A server-side sessionisation rule would have split this session in two.
+        type: categorical
+      - name: is_cohort_eligible
+        description: The owning user's arrival was genuinely observed.
+        type: categorical
+      - name: has_purchase
+        description: The session contained a purchase.
+        type: categorical
+
+    measures:
+      - name: sessions
+        description: Count of sessions.
+        agg: count_distinct
+        expr: session_key
+
+      - name: session_events
+        description: Total events across sessions. The numerator of session depth.
+        agg: sum
+        expr: events_in_session
+
+      - name: session_page_views
+        description: Total page views across sessions.
+        agg: sum
+        expr: page_views
+
+      - name: engaged_sessions
+        description: Sessions meeting GA4's engagement definition.
+        agg: sum
+        expr: "case when is_engaged_session then 1 else 0 end"
+
+      - name: engaged_sessions_derived
+        description: Sessions meeting the derived engagement definition. Published to quantify the gap.
+        agg: sum
+        expr: "case when is_engaged_session_derived then 1 else 0 end"
+
+      - name: sessions_split_by_gap
+        description: Sessions containing an internal inactivity gap longer than the project's gap threshold.
+        agg: sum
+        expr: "case when is_split_by_inactivity_rule then 1 else 0 end"
+
+      - name: session_duration_seconds
+        description: Total session duration in seconds.
+        agg: sum
+        expr: session_duration_seconds
+
+      - name: purchasing_sessions
+        description: Sessions containing at least one purchase.
+        agg: sum
+        expr: "case when has_purchase then 1 else 0 end"
+
+      - name: session_revenue
+        description: Purchase revenue in USD, at session grain.
+        agg: sum
+        expr: session_revenue_usd
+
+      - name: transactions
+        description: >
+          Distinct completed orders. Counted from transaction_id rather than
+          from purchase events, because GA4 can fire the same purchase event
+          twice on a page refresh at the order-confirmation screen.
+        agg: sum
+        expr: transactions
+
+  # -------------------------------------------------------------------------
+  - name: events
+    description: >
+      Event-grain semantic model over fct_events. The home of feature adoption,
+      which is a user-grain question asked of event-grain data: "did this user
+      do this thing inside their first seven days?" Its adoption measures
+      deliberately aggregate by cohort date rather than event date.
+    model: ref('fct_events')
+    defaults:
+      agg_time_dimension: event_date
+
+    entities:
+      - name: event
+        type: primary
+        expr: event_key
+      - name: session
+        type: foreign
+        expr: session_key
+      - name: user
+        type: foreign
+        expr: user_pseudo_id
+
+    dimensions:
+      - name: event_date
+        description: Date the event fired.
+        type: time
+        type_params:
+          time_granularity: day
+      - name: user_first_seen_date
+        description: Cohort date of the user who fired the event.
+        type: time
+        type_params:
+          time_granularity: day
+      - name: event_name
+        description: GA4 event type.
+        type: categorical
+      - name: feature_name
+        description: Feature the event maps to, from the governed feature catalogue. Null for non-feature events.
+        type: categorical
+      - name: is_user_initiated_feature
+        description: The event reflects a deliberate user action rather than an impression.
+        type: categorical
+      - name: funnel_step_name
+        description: Funnel step the event represents, null for non-funnel events.
+        type: categorical
+      - name: device_category
+        description: Device category at event time.
+        type: categorical
+      - name: operating_system
+        description: Operating system at event time.
+        type: categorical
+      - name: browser
+        description: Browser at event time.
+        type: categorical
+      - name: country
+        description: Country at event time.
+        type: categorical
+      - name: first_touch_medium
+        description: The firing user's acquisition medium.
+        type: categorical
+      - name: is_left_censored
+        description: The firing user existed before the loaded window.
+        type: categorical
+      - name: has_full_d7_window
+        description: Seven days have fully elapsed since the firing user's first session.
+        type: categorical
+
+    measures:
+      - name: events
+        description: Count of events.
+        agg: count
+        expr: event_key
+
+      - name: event_users
+        description: Distinct users firing any event.
+        agg: count_distinct
+        expr: user_pseudo_id
+
+      - name: feature_adopters_7d
+        description: >
+          Distinct users who took a deliberate feature action within seven days
+          of their first session. Group by feature_name to get per-feature
+          adoption; the impression events are already excluded.
+        agg: count_distinct
+        expr: >
+          case
+            when is_user_initiated_feature
+             and days_since_first_session between 0 and 7
+             and not is_left_censored
+             and has_full_d7_window
+            then user_pseudo_id
+          end
+        agg_time_dimension: user_first_seen_date
+
+      - name: adoption_base_users
+        description: >
+          Distinct eligible users in the cohort, the denominator for adoption.
+          Computed on the event table so numerator and denominator share a join
+          path and a time grain.
+        agg: count_distinct
+        expr: >
+          case
+            when not is_left_censored and has_full_d7_window
+            then user_pseudo_id
+          end
+        agg_time_dimension: user_first_seen_date
+
+      - name: event_revenue
+        description: Purchase revenue in USD, at event grain. The authoritative revenue measure.
+        agg: sum
+        expr: purchase_revenue_usd
+
+  # -------------------------------------------------------------------------
+  - name: funnel
+    description: >
+      Step-grain semantic model over fct_funnel, five rows per session. Exposes
+      both the permissive and the strict reachability measures so a conversion
+      rate can state which one it used.
+    model: ref('fct_funnel')
+    defaults:
+      agg_time_dimension: session_date
+
+    entities:
+      - name: funnel_step
+        type: primary
+        expr: funnel_key
+      - name: session
+        type: foreign
+        expr: session_key
+      - name: user
+        type: foreign
+        expr: user_pseudo_id
+
+    dimensions:
+      - name: session_date
+        description: Date the session started.
+        type: time
+        type_params:
+          time_granularity: day
+      - name: user_first_seen_date
+        description: Cohort date of the owning user.
+        type: time
+        type_params:
+          time_granularity: day
+      - name: step_name
+        description: Funnel step — session_start, view_item, add_to_cart, begin_checkout, purchase.
+        type: categorical
+      - name: step_position
+        description: Funnel step ordinal as a string, for stable ordering in group-bys.
+        type: categorical
+        expr: "cast(step_number as string)"
+      - name: device_category
+        description: Device category at session start.
+        type: categorical
+      - name: operating_system
+        description: Operating system at session start.
+        type: categorical
+      - name: browser
+        description: Browser at session start.
+        type: categorical
+      - name: country
+        description: Country at session start.
+        type: categorical
+      - name: acquisition_medium
+        description: The owning user's acquisition medium.
+        type: categorical
+      - name: is_cohort_eligible
+        description: The owning user's arrival was genuinely observed.
+        type: categorical
+
+    measures:
+      - name: funnel_sessions_reached
+        description: >
+          Sessions that fired this step's event at any point, whether or not
+          earlier steps were reached. The permissive count.
+        agg: sum
+        expr: "case when is_reached then 1 else 0 end"
+
+      - name: funnel_sessions_in_sequence
+        description: >
+          Sessions that reached this step having also reached every prior step.
+          The strict count, and the only safe numerator for a conversion rate.
+        agg: sum
+        expr: "case when is_reached_in_sequence then 1 else 0 end"

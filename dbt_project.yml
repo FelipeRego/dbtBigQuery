@@ -1,0 +1,52 @@
+name: 'ga4_analytics'
+version: '1.0.0'
+config-version: 2
+
+profile: 'ga4_analytics'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+vars:
+  # Controls how much of the sharded public dataset we scan. The GA4 obfuscated
+  # sample covers 2020-11-01 to 2021-01-31. Narrow this while developing to cut
+  # both wall-clock time and bytes billed; widen it for a full refresh.
+  ga4_start_date: '20201101'
+  ga4_end_date: '20210131'
+
+  # The activation window, in days from a user's first session. Referenced by
+  # dim_users and documented in the README's metric definitions. Changing this
+  # changes the activation_rate metric — deliberately, and in one place.
+  activation_window_days: 7
+
+  # Partitioning is off by default so the project builds in a free BigQuery
+  # sandbox, which forces a 60-day partition expiry that would silently empty
+  # every table built on this 2020-21 dataset. See macros/ga4_partitioning.sql.
+  enable_partitioning: false
+
+  # Inactivity gap, in minutes, used to measure disagreement between GA4's
+  # client-side ga_session_id and a server-side sessionisation rule.
+  session_gap_minutes: 30
+
+models:
+  ga4_analytics:
+    # Every model is a table. BigQuery's sandbox tier does not support the DML
+    # that dbt's incremental strategy emits, and materialising staging stops us
+    # from re-scanning the public dataset on every downstream run.
+    +materialized: table
+    staging:
+      +schema: staging
+    intermediate:
+      +schema: intermediate
+    marts:
+      +schema: marts
+    semantic:
+      +schema: semantic

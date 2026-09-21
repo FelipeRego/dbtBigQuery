@@ -1,0 +1,29 @@
+version: 2
+
+sources:
+  - name: ga4_public
+    description: >
+      Google's obfuscated GA4 sample for the Google Merchandise Store, covering
+      2020-11-01 to 2021-01-31. Read-only, free to query, and sharded one table
+      per day. The obfuscation replaces user ids and some traffic source values,
+      which is why this project treats `user_pseudo_id` as the only user grain
+      and never claims cross-device identity.
+    database: bigquery-public-data
+    schema: ga4_obfuscated_sample_ecommerce
+    tables:
+      - name: events
+        identifier: "events_*"
+        description: >
+          Wildcard over the daily event shards. Every model that reads this
+          source filters on `_table_suffix`, which is what makes the scan
+          cheap: without it BigQuery reads all 92 shards regardless of any
+          predicate on event_date.
+        columns:
+          - name: event_name
+            description: The GA4 event type, e.g. page_view, add_to_cart, purchase.
+          - name: user_pseudo_id
+            description: Obfuscated client identifier. The de facto user grain.
+          - name: event_timestamp
+            description: Event time in microseconds since the Unix epoch, UTC.
+          - name: event_params
+            description: Repeated key/value struct holding per-event attributes.

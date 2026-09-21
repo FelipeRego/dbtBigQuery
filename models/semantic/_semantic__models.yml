@@ -1,0 +1,17 @@
+version: 2
+
+models:
+  - name: metricflow_time_spine
+    description: >
+      Dense daily calendar used by MetricFlow to fill gaps in metric time
+      series. Not a business model — it exists so that a day with no rows is
+      reported as zero instead of disappearing.
+    time_spine:
+      standard_granularity_column: date_day
+    columns:
+      - name: date_day
+        description: One row per calendar day.
+        granularity: day
+        tests:
+          - unique
+          - not_null

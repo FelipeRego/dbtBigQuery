@@ -1,0 +1,38 @@
+[project]
+name = "ga4-semantic-layer"
+version = "1.0.0"
+description = "A governed GA4 product-analytics semantic layer in dbt, queryable by humans and by LLM agents over MCP."
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+license = { text = "MIT" }
+authors = [{ name = "Felipe Rego" }]
+
+dependencies = [
+    # dbt + the BigQuery adapter, and MetricFlow as the metric engine.
+    "dbt-metricflow[dbt-bigquery]>=0.15.0,<0.16.0",
+    # Official MCP Python SDK — the agent-facing surface of the semantic layer.
+    "mcp>=1.2.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.6.0"]
+
+[project.scripts]
+ga4-semantic-mcp = "mcp_server.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mcp_server"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# ISC003 fights the readable multi-line prose strings in the doc generator, and
+# EXE001 fires on scripts that are run as `python scripts/x.py` by design.
+ignore = ["ISC001", "ISC003", "EXE001"]

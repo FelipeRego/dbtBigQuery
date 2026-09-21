@@ -1,0 +1,46 @@
+version: 2
+
+seeds:
+  - name: feature_catalogue
+    description: >
+      The governed list of what counts as a "feature" for adoption metrics, and
+      crucially which events represent a user *choosing* to use one.
+
+      `view_promotion` and `view_item_list` are impressions: the site fires them
+      on page load whether or not the user engaged. They are included here so
+      the mapping is complete and auditable, but flagged
+      `is_user_initiated = false` and excluded from adoption metrics. Counting
+      them would report promotions adoption near 100% and mean nothing —
+      view_promotion fires 190,104 times in this sample against 9,450
+      select_promotion clicks, a 20:1 ratio.
+
+      The catalogue is property-specific, not universal. `view_cart` and
+      `add_to_wishlist` are standard GA4 recommended events and would belong
+      here in most stores, but the Google Merchandise Store never fired them in
+      this window, so cart-review and wishlist adoption are simply not
+      measurable on this data. Listing an event that never fires would produce
+      a permanent zero that reads like a product failure.
+
+      Editing this file changes every feature-adoption metric. That is the
+      point: the definition lives in one reviewable artefact, not scattered
+      across dashboards.
+    config:
+      column_types:
+        event_name: STRING
+        feature_name: STRING
+        feature_description: STRING
+        is_user_initiated: BOOLEAN
+    columns:
+      - name: event_name
+        description: The GA4 event name that signals use of the feature.
+        tests:
+          - unique
+          - not_null
+      - name: feature_name
+        description: The stable analytical name for the feature. Several events may map to one feature.
+        tests:
+          - not_null
+      - name: is_user_initiated
+        description: Whether the event reflects a deliberate user action rather than an impression.
+        tests:
+          - not_null

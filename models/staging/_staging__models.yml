@@ -1,0 +1,119 @@
+version: 2
+
+models:
+  - name: stg_events
+    description: >
+      One row per GA4 event, typed and renamed, with the commonly used
+      `event_params` keys promoted to columns. Materialised as a partitioned
+      table rather than a view so that the eight downstream models read a local
+      4 GiB table once instead of re-scanning the public dataset eight times.
+    columns:
+      - name: event_key
+        description: >
+          Surrogate key over (user_pseudo_id, ga_session_id, event_at,
+          event_name, event_bundle_sequence_id, page_location). GA4 exports no
+          unique event identifier, so this is constructed. The uniqueness test
+          below is the honest check on whether those six fields are actually
+          sufficient — see the README section "The event grain is a lie".
+        tests:
+          - not_null
+          - unique:
+              config:
+                severity: warn
+      - name: session_key
+        description: user_pseudo_id concatenated with ga_session_id. The session grain used everywhere downstream.
+        tests:
+          - not_null:
+              config:
+                severity: warn
+      - name: user_pseudo_id
+        description: >
+          Obfuscated client identifier. This is a *device-browser* identity, not
+          a person: the same human on a phone and a laptop is two rows here.
+          `user_id` exists in the GA4 schema but is null throughout this sample,
+          so no cross-device stitching is possible or attempted.
+        tests:
+          - not_null
+      - name: ga_session_id
+        description: >
+          GA4's client-side session identifier, assigned at session start.
+          Null for a small number of events fired before the session cookie is
+          set; those events are dropped at the intermediate layer.
+      - name: ga_session_number
+        description: The ordinal of this session for this user, per GA4. 1 means GA4 believes this is the user's first session.
+      - name: stream_id
+        description: The GA4 data stream the event came from.
+      - name: event_name
+        description: The GA4 event type, e.g. page_view, view_item, add_to_cart, purchase.
+        tests:
+          - not_null
+      - name: event_date
+        description: Event date, parsed from the shard suffix, in the property's reporting timezone.
+        tests:
+          - not_null
+      - name: event_at
+        description: Event timestamp in UTC, converted from microseconds since epoch.
+        tests:
+          - not_null
+      - name: event_bundle_sequence_id
+        description: GA4's batch sequence number. Used only as a tiebreaker in the surrogate key.
+      - name: event_value_in_usd
+        description: The generic event value GA4 attaches to some events. Mostly null; revenue lives in purchase_revenue_usd.
+      - name: page_location
+        description: Full URL of the page the event fired on.
+      - name: page_title
+        description: Document title of the page the event fired on.
+      - name: page_referrer
+        description: The referring URL, where the browser supplied one.
+      - name: engagement_time_msec
+        description: Milliseconds of foreground engagement GA4 attributed to this event. Additive within a session.
+      - name: is_session_engaged_event
+        description: GA4's own client-side engaged-session flag, carried on the event that set it.
+      - name: is_entrance
+        description: True when GA4 marked this event as the session's entrance.
+      - name: device_category
+        description: desktop, mobile or tablet, as classified by GA4.
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['desktop', 'mobile', 'tablet']
+              config:
+                severity: warn
+      - name: operating_system
+        description: Operating system reported by the browser.
+      - name: browser
+        description: Browser name from device.web_info.
+      - name: device_language
+        description: Browser language setting.
+      - name: platform
+        description: GA4 platform, WEB for this property.
+      - name: country
+        description: Country resolved from IP at collection time.
+      - name: region
+        description: Sub-national region resolved from IP.
+      - name: city
+        description: City resolved from IP. Heavily obfuscated in this sample.
+      - name: first_touch_source
+        description: >
+          The source that first acquired this *user*, not the source of this
+          session. GA4 stores traffic_source at user scope in the BigQuery
+          export. Naming it first_touch_ rather than session_ is the single most
+          important renaming in this project.
+      - name: first_touch_medium
+        description: The medium that first acquired this user, e.g. organic, cpc, referral, (none).
+      - name: first_touch_campaign
+        description: The campaign name that first acquired this user, from traffic_source.name.
+      - name: user_first_touch_at
+        description: >
+          GA4's record of when this user was first seen by the property, which
+          can predate the loaded window. Used to detect left-censored users.
+      - name: transaction_id
+        description: Order identifier, populated on purchase events.
+      - name: purchase_revenue_usd
+        description: Purchase revenue in USD, populated on purchase events.
+      - name: total_item_quantity
+        description: Total units in the ecommerce payload for this event.
+      - name: unique_items
+        description: Distinct SKUs in the ecommerce payload for this event.
+      - name: item_count
+        description: Length of the repeated `items` array on this event.
