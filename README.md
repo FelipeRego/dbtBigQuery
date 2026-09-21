@@ -1,5 +1,11 @@
 # A governed GA4 semantic layer, queryable by humans and by agents
 
+[![CI](https://github.com/FelipeRego/dbtBigQuery/actions/workflows/ci.yml/badge.svg)](https://github.com/FelipeRego/dbtBigQuery/actions/workflows/ci.yml)
+[![dbt](https://img.shields.io/badge/dbt--core-1.12.5-FF694B)](https://docs.getdbt.com/)
+[![MetricFlow](https://img.shields.io/badge/MetricFlow-0.213-262A38)](https://docs.getdbt.com/docs/build/about-metricflow)
+[![MCP](https://img.shields.io/badge/MCP-Python%20SDK%202.2-000000)](https://modelcontextprotocol.io/)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
+
 A dbt project over Google's public GA4 ecommerce sample that defines the
 product-analytics metrics people actually argue about — activation, retention,
 feature adoption, session depth, funnel conversion — and then puts an MCP server
