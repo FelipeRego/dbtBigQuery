@@ -36,6 +36,8 @@ number.*
 ## Contents
 
 - [The claim](#the-claim)
+- [How it was built](#how-it-was-built)
+- [The toolchain](#the-toolchain)
 - [The metric dictionary](#the-metric-dictionary)
 - [Five things the data changed my mind about](#five-things-the-data-changed-my-mind-about)
 - [Architecture](#architecture)
@@ -43,6 +45,7 @@ number.*
 - [Testing: the day 97 tests passed against six empty tables](#testing-the-day-97-tests-passed-against-six-empty-tables)
 - [Running it yourself](#running-it-yourself)
 - [The BI layer](#the-bi-layer)
+- [What this demonstrates](#what-this-demonstrates)
 - [What this project does not do](#what-this-project-does-not-do)
 
 ---
@@ -88,6 +91,188 @@ refuses, names the 42 that do, and tells the model that the metric would need to
 be defined and reviewed first. An LLM with warehouse credentials will cheerfully
 compute D7 retention three different ways across three conversations and present
 all three with equal confidence. This one can't.
+
+---
+
+## How it was built
+
+Eight stages, in order. Each one produced something the next depended on, and
+each involved a decision worth defending rather than a default worth accepting.
+
+### 1. Reconnaissance, before writing any dbt
+
+Three queries against the raw export, to find out what the property actually
+fires rather than what the GA4 documentation says it might:
+
+```sql
+select event_name, count(*) from `bigquery-public-data.ga4_obfuscated_sample_ecommerce.events_*`
+group by 1 order by 2 desc
+```
+
+Seventeen distinct event names, three device categories, six traffic mediums.
+This is why `seeds/feature_catalogue.csv` maps `select_promotion` and not
+`view_cart`: `view_cart` and `add_to_wishlist` are standard GA4 recommended
+events that this property never fired once in 92 days. Cataloguing them would
+have produced a permanent zero that reads like a product failure.
+
+It also surfaced that `view_promotion` fires 190,104 times against 9,450
+`select_promotion` clicks — the 20:1 ratio that forced the
+impression-versus-action distinction into the seed file.
+
+### 2. Staging — one row per event, and no opinions
+
+`models/staging/stg_events.sql`. Typing, renaming, and promoting the useful
+`event_params` keys to real columns. 4,295,584 rows.
+
+GA4 stores per-event attributes in a repeated `STRUCT`, so every field needs an
+unnest-and-filter. Rather than repeat that eight times, the pattern lives in
+`macros/ga4_event_params.sql`:
+
+```sql
+{% macro ga4_param_int(key) -%}
+    (select ep.value.int_value from unnest(event_params) ep where ep.key = '{{ key }}' limit 1)
+{%- endmacro %}
+```
+
+The `limit 1` is load-bearing — GA4 does not guarantee a key appears once per
+event, and without it the build dies mid-run on a scalar-subquery error.
+
+Two decisions here. Staging is materialised as a **table, not a view**, so the
+three models that reference it read a local table instead of re-scanning 2.9
+GiB of the public dataset each time. And `traffic_source` is renamed to
+`first_touch_*`, because in the BigQuery export it describes how the *user* was
+first acquired, not where the current session came from — the single most
+common error built on this dataset.
+
+### 3. Intermediate — sessionisation and the cohort anchor
+
+`models/intermediate/int_sessions.sql`. 360,129 rows, one per session.
+
+This is where the window functions live: `LAG` over events within a session to
+detect inactivity gaps, `QUALIFY ROW_NUMBER()` to take session attributes from
+the chronologically first event rather than an arbitrary row, and
+`ARRAY_AGG(... IGNORE NULLS ORDER BY ... LIMIT 1)` for the landing page.
+
+Two things are computed here precisely so that nothing downstream has to
+recompute them and risk disagreeing:
+
+- **`days_since_first_session`** — one elapsed-time axis, shared by activation,
+  retention and feature adoption.
+- **`is_left_censored`** — GA4's own `user_first_touch_timestamp` compared
+  against the window start, which identifies the 8,417 users whose "first
+  session" here is an artefact of where the data was cut.
+
+### 4. Marts — four tables at three grains
+
+| Model | Grain | Rows | Carries |
+| --- | --- | ---: | --- |
+| `fct_events` | event | 4,295,584 | cohort context and feature classification on every event |
+| `dim_users` | user | 270,154 | activation, retention and the eligibility flags |
+| `fct_sessions` | session | 360,129 | engagement, depth, acquisition |
+| `fct_funnel` | session × step | 1,800,645 | five dense rows per session |
+
+`fct_funnel` is deliberately dense — five rows per session whether or not the
+step was reached — so step-to-step conversion is a ratio of two counts over one
+table, and a step with no traffic on a given day appears as a zero instead of
+vanishing from the chart.
+
+### 5. Tests — 98 of them, and one that cannot pass vacuously
+
+Uniqueness and not-null on every key, `accepted_values` on every enumerated
+dimension, `relationships` across all four marts, `dbt_utils.accepted_range` on
+every count and duration, and model-level `expression_is_true` assertions for
+the invariants that encode actual business logic.
+
+Plus `tests/assert_models_are_not_empty.sql`, which exists because of a real
+failure documented [below](#testing-the-day-97-tests-passed-against-six-empty-tables).
+
+### 6. Semantic layer — 4 semantic models, 42 metrics
+
+`models/semantic/`. Entities, dimensions and measures in
+`semantic_models.yml`; metrics in `metrics.yml` (955 lines, most of it prose).
+
+The technique that matters: **eligibility is compiled into the measure
+expression**, not left as a filter the caller must remember.
+
+```yaml
+- name: activated_users
+  description: >
+    Eligible users whose first purchase landed inside the activation
+    window. Eligibility is inside the expression on purpose.
+  agg: sum
+  expr: "case when is_activated and not is_left_censored and has_full_activation_window then 1 else 0 end"
+```
+
+And the governance text rides along in `config.meta`, so dbt compiles it into
+`target/semantic_manifest.json` where both the docs generator and the MCP server
+can read it.
+
+### 7. Agent interface — MCP server, seven tools, no SQL
+
+`mcp_server/server.py`, 642 lines. Reads the compiled manifest for metric
+metadata; shells out to the MetricFlow CLI for the numbers. Every response that
+carries a figure also carries that figure's definition, assumption, trade-off
+and failure mode.
+
+Unknown metrics are refused with a structured payload naming the 42 that exist —
+returned, not raised, so the model learns what it may ask for instead of seeing
+an opaque tool error.
+
+### 8. Documentation and CI — closing the drift loop
+
+Three generators and a workflow:
+
+- `scripts/render_metric_docs.py` renders the metric dictionary from the
+  manifest, with a `--check` mode that fails CI if the README has drifted.
+- `scripts/render_overview_svg.py` builds the chart at the top of this README
+  from live `mf query` calls, so the picture cannot contradict the metrics.
+- `scripts/smoke_test_mcp.py` launches the server as a subprocess and drives it
+  over a real stdio MCP session, asserting that governance travels with every
+  number and that no raw-SQL tool exists.
+- `.github/workflows/ci.yml` runs all of the above without warehouse
+  credentials, because `dbt parse` validates models, semantic models and metrics
+  against each other without opening a connection.
+
+---
+
+## The toolchain
+
+| Tool | Version | What it does here | Why this one |
+| --- | --- | --- | --- |
+| **BigQuery** | sandbox tier | Warehouse. Source dataset plus seven built models and one seed | Free without a credit card, and the GA4 sample lives there. Its constraints shaped real decisions — see the partitioning story |
+| **dbt-core** | 1.12.5 | Transformation, testing, lineage, documentation, exposures | The lingua franca of analytics engineering. Everything here is portable to any dbt warehouse |
+| **dbt-bigquery** | 1.12.1 | Adapter: partitioning, clustering, `maximum_bytes_billed` | — |
+| **dbt_utils** | 1.4.1 | `generate_surrogate_key`, plus the `accepted_range` and `expression_is_true` assertions | dbt core ships `unique`, `not_null`, `accepted_values` and `relationships`; these are the two assertion types it does not, and both are load-bearing here |
+| **MetricFlow** | 0.213.0 (CLI 0.15.0) | The metric engine: semantic models, ratio and filtered metrics, cohort time dimensions, the join graph | The open-source engine behind the dbt Semantic Layer. Metrics compile to SQL rather than being reimplemented per tool |
+| **MCP Python SDK** | 2.2.0 | The agent interface, over stdio | The emerging standard for exposing tools to LLMs. Works with any MCP client |
+| **uv** | 0.10.12 | Environment and dependency management, lockfile-backed | Fast, and `--managed-python` sidesteps whatever interpreter the machine happens to have — which mattered here, since the system Anaconda build crashes dbt with SIGBUS |
+| **Python** | 3.12.13 | MCP server (642 lines) plus three tooling scripts — two doc generators and an MCP integration test (734 lines) | — |
+| **Ruff** | 0.16.8 | Lint and format, enforced in CI | — |
+| **GitHub Actions** | — | Parse, drift-check, agent-surface guard, lint | Runs credential-free, so a fork gets a green build without a GCP account |
+| **Google Cloud SDK** | 585.0.0 | `scripts/setup_gcp.sh` — project creation, API enablement, ADC | Makes the whole thing reproducible from one command |
+| **Power BI** | — | The BI consumer, declared as a dbt exposure | The one consumer that reads the marts directly, and therefore the one that needs written rules |
+
+A few choices worth the sentence:
+
+**Why MetricFlow and not just well-named dbt models.** A model can encode a
+metric, but it cannot encode a *ratio over a dynamic group-by*. Activation rate
+sliced by acquisition channel, device and cohort week is one metric definition
+in MetricFlow and one SQL compilation per question; as models it is either a
+cube with every combination pre-computed or a BI tool re-deriving the numerator
+each time. The whole governance argument depends on there being exactly one
+definition, and MetricFlow is what makes that mechanically true.
+
+**Why MCP and not a chat wrapper over the warehouse.** A text-to-SQL agent with
+warehouse credentials is faster to build and produces answers that cannot be
+audited. Wiring the agent to the metric layer instead means the set of
+answerable questions is exactly the set of governed metrics — and the ones
+outside it come back as an explicit refusal rather than a plausible guess.
+
+**Why no incremental models.** dbt's incremental strategy on BigQuery emits
+`MERGE`, which the free sandbox does not support. At 4.3m rows and a 75-second
+full refresh, incrementality would be complexity without benefit. Stating that
+is the engineering decision; reaching for incremental because it looks advanced
+would have been the mistake.
 
 ---
 
@@ -762,6 +947,33 @@ model.
 The report screenshot is not in this repo. Power BI Desktop is Windows-only and
 this project was built on macOS; the generated SVG above is produced from the
 same metrics and is the artefact that stays in sync automatically.
+
+---
+
+## What this demonstrates
+
+For anyone evaluating this as a work sample rather than reading it end to end —
+each row names a capability and the file that evidences it.
+
+| Capability | Where to look |
+| --- | --- |
+| **Dimensional modelling** at three grains, plus a dense session × step fact | [`models/marts/`](models/marts) |
+| **Advanced SQL** — window functions, `QUALIFY`, repeated-struct unnesting, dense cross joins | [`int_sessions.sql`](models/intermediate/int_sessions.sql), [`fct_funnel.sql`](models/marts/fct_funnel.sql) |
+| **Metrics-as-code / semantic layer** — 4 semantic models, 42 metrics, ratio metrics with per-input filters | [`models/semantic/`](models/semantic) |
+| **Data quality engineering** — 98 tests, and the discovery that generic tests cannot fail on an empty table | [`assert_models_are_not_empty.sql`](tests/assert_models_are_not_empty.sql) |
+| **Warehouse cost control** — var-driven scan windows, a per-query `maximum_bytes_billed` ceiling, cost measured from `INFORMATION_SCHEMA` rather than estimated | [`profiles.yml`](profiles.yml), [`dbt_project.yml`](dbt_project.yml) |
+| **Documentation as code** — 213 documented columns, and a metric dictionary generated from the same YAML the warehouse reads | [`render_metric_docs.py`](scripts/render_metric_docs.py) |
+| **AI / agent integration** — an MCP server over a governed metric layer, with structured refusals | [`mcp_server/server.py`](mcp_server/server.py) |
+| **Python engineering** — 1,376 lines across an MCP server and three tooling scripts, linted and formatted in CI | [`mcp_server/`](mcp_server), [`scripts/`](scripts) |
+| **CI/CD** — credential-free validation, plus a drift check that fails the build if docs and definitions disagree | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) |
+| **BI integration and impact analysis** — exposures covering both the dashboard and the agent | [`models/exposures.yml`](models/exposures.yml) |
+| **Data visualisation** — a chart generated from live metric queries, on a colour-blind-validated palette | [`render_overview_svg.py`](scripts/render_overview_svg.py) |
+| **Analytical judgement** — five documented cases where the data contradicted the first draft of a definition | [Five things the data changed my mind about](#five-things-the-data-changed-my-mind-about) |
+
+The last row is the one I would read first. Everything above it is craft that
+can be learned from documentation; that one is the part that only shows up when
+somebody checks their own assumptions against the data and writes down what they
+found.
 
 ---
 

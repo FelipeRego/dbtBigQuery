@@ -5,8 +5,9 @@ models:
     description: >
       One row per GA4 event, typed and renamed, with the commonly used
       `event_params` keys promoted to columns. Materialised as a partitioned
-      table rather than a view so that the eight downstream models read a local
-      4 GiB table once instead of re-scanning the public dataset eight times.
+      table rather than a view so that the three models referencing it read a
+      local table instead of re-scanning 2.9 GiB of the public dataset each
+      time.
     columns:
       - name: event_key
         description: >
