@@ -23,8 +23,8 @@
     Turning it on
     -------------
     Attach a billing account to the project (the free tier still gives you 1 TiB
-    of query processing a month, and this project's full build scans about 3
-    GiB), then either set the var permanently in dbt_project.yml or run:
+    of query processing a month, and a full build of this project bills about
+    6.75 GiB), then either set the var permanently in dbt_project.yml or run:
 
         dbt build --vars 'enable_partitioning: true'
 #}

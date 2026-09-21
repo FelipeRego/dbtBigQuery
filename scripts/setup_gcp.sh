@@ -5,9 +5,9 @@
 # Creates a dedicated GCP project, enables the BigQuery API, and writes
 # Application Default Credentials that dbt will use.
 #
-# BigQuery's free tier gives you 1 TiB of query processing per month. This
-# project's full refresh scans roughly 4-5 GiB, so you would need to run it
-# about 200 times in a month before paying anything.
+# BigQuery's free tier gives you 1 TiB of query processing per month. A full
+# refresh of this project bills about 6.75 GiB across 106 query jobs, so you
+# would need to run it roughly 150 times in a month before paying anything.
 #
 # Usage:  ./scripts/setup_gcp.sh [PROJECT_ID]
 # ---------------------------------------------------------------------------

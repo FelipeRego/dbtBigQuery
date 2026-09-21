@@ -21,7 +21,7 @@ agent read.
 | **Models** | 7 models + 1 seed (1 staging, 1 intermediate, 4 marts, 1 time spine) |
 | **Tests** | 98 data tests, all passing — including one that cannot pass vacuously |
 | **Metrics** | 42 defined in MetricFlow, each with a four-part governance block |
-| **Cost** | ~3 GiB scanned per full build. BigQuery's free tier covers ~340 builds a month |
+| **Cost** | 6.75 GiB billed per full build, across 106 query jobs. BigQuery's free 1 TiB/month covers ~150 builds |
 
 ![Overview of the semantic layer: activation, retention, feature adoption and the purchase funnel](docs/img/semantic-layer-overview.svg)
 
@@ -697,8 +697,10 @@ expecting collisions. It passes cleanly across all 4,295,584 events.
 ## Running it yourself
 
 You need a Google account. You do not need a credit card — the free BigQuery
-sandbox is enough, and the full build scans about 3 GiB against a 1 TiB monthly
-free allowance.
+sandbox is enough. A full build bills 6.75 GiB across 106 query jobs, measured
+from `INFORMATION_SCHEMA.JOBS_BY_PROJECT` rather than estimated, against a
+1 TiB monthly free allowance — roughly 150 full builds a month before you pay
+anything.
 
 ```bash
 git clone <this repo> && cd dbtBigQuery
@@ -717,7 +719,7 @@ export DBT_PROFILES_DIR=.
 
 # 4. Build and test
 .venv/bin/dbt deps
-.venv/bin/dbt build          # ~75s, ~3 GiB scanned, 106 nodes + 2 exposures
+.venv/bin/dbt build          # ~75s, 6.75 GiB billed, 106 nodes + 2 exposures
 
 # 5. Query a metric
 .venv/bin/mf query --metrics activation_rate,d7_retention_rate,session_depth

@@ -14,6 +14,8 @@ ga4_analytics:
       threads: 8
       timeout_seconds: 600
       priority: interactive
-      # Fail the run rather than quietly billing a large scan. The full build
-      # of this project scans roughly 5 GiB; 20 GiB means something is wrong.
+      # Per-QUERY ceiling, not a per-build one. The largest single query in
+      # this project scans 2.9 GiB (staging over the full source); a whole
+      # build bills 6.75 GiB across 106 jobs. A single query reaching 20 GiB
+      # means a predicate was lost, so fail rather than quietly bill it.
       maximum_bytes_billed: 21474836480
