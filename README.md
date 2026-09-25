@@ -6,6 +6,13 @@
 [![MCP](https://img.shields.io/badge/MCP-Python%20SDK%202.2-000000)](https://modelcontextprotocol.io/)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 
+> **[▶ Open the interactive explorer](https://feliperego.github.io/dbtBigQuery/)** —
+> browse all 42 metrics with their definitions, assumptions and failure modes,
+> follow one question from an LLM through the MCP server to BigQuery, and see
+> which dimensions each semantic model allows. No install, no login.
+
+[![The interactive explorer: metric governance, question trace and semantic model map](docs/img/explorer-preview.png)](https://feliperego.github.io/dbtBigQuery/)
+
 A dbt project over Google's public GA4 ecommerce sample that defines the
 product-analytics metrics people actually argue about — activation, retention,
 feature adoption, session depth, funnel conversion — and then puts an MCP server

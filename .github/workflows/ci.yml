@@ -46,6 +46,11 @@ jobs:
         # answers to "what does activation mean" and this fails the build.
         run: .venv/bin/python scripts/render_metric_docs.py --check
 
+      - name: Check the interactive explorer has not drifted
+        # Same guarantee for the published explorer page: its embedded data is
+        # generated from the semantic YAML and must match it.
+        run: .venv/bin/python scripts/render_explorer_data.py --check
+
       - name: Assert the agent surface exposes no raw-SQL tool
         # The governance claim in the README is only true while this holds.
         run: |
