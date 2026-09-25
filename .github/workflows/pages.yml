@@ -1,0 +1,37 @@
+name: Explorer
+
+# Publishes docs/explorer/ — the interactive metric explorer — to GitHub Pages.
+# The page is a single self-contained HTML file; CI (ci.yml) already fails if
+# its embedded data drifts from the semantic YAML, so this job only ships it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/explorer/**
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/explorer
+      - id: deployment
+        uses: actions/deploy-pages@v4
